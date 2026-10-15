@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Hap",
+    "slug": "Hap",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/logo.png",
+    "scheme": "hap",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "icon": "./assets/images/logo.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#121316",
+        "foregroundImage": "./assets/images/logo.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "name": "Hap",
+      "shortName": "Hap",
+      "display": "standalone",
+      "bundler": "metro",
+      "themeColor": "#121316",
+      "backgroundColor": "#121316",
+      "favicon": "./assets/images/logo.png",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#121316",
+          "image": "./assets/images/logo.png",
+          "imageWidth": 76
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
