@@ -65,6 +65,29 @@ App-Zugang an die Function `meal-profile` gesendet und in Netlify Blobs gespeich
 Die wöchentliche Erstellung hängt diesen Text an MEAL_PLAN_PROMPT an, damit
 Kalorien, Protein und Trainingstage berücksichtigt werden.
 
+## Hap auf dem Home-Bildschirm (ohne App Store)
+
+Hap ist eine installierbare Web-App mit eigenem Logo:
+
+- iPhone (iOS 16.4 oder neuer): Hap in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
+- Android (Chrome): Menü ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“.
+
+Danach Hap über das Icon öffnen und unter Einstellungen → Benachrichtigungen
+die Erinnerungen einschalten. Auf dem iPhone geht Push nur in der App vom
+Home-Bildschirm, nicht im normalen Safari-Tab.
+
+### Push einrichten (einmalig)
+
+1. Lokal Schlüssel erzeugen: `npx web-push generate-vapid-keys`
+2. In Netlify (Scope Functions) hinterlegen: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
+   und VAPID_SUBJECT (z. B. `mailto:deine-adresse`). Den privaten Schlüssel nie in die App eintragen.
+3. Neu deployen. HAP_ACCESS_TOKEN muss in der App unter Einstellungen eingetragen sein.
+
+Die App schickt ihre anstehenden Erinnerungen (nächste 4 Tage) an die Function
+`push`. Die geplante Function `push-dispatch` läuft alle 2 Minuten und versendet,
+was fällig ist – Erinnerungen kommen also bis zu etwa 2 Minuten später als geplant.
+Änderungen am Plan werden beim nächsten Öffnen von Hap übertragen.
+
 ## Benachrichtigungen
 
 In der nativen App plant Hap lokale Erinnerungen für die nächsten 4 Tage

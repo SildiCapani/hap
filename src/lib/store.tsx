@@ -24,6 +24,7 @@ import {
 import { parseRapla, raplaWeeksUrl, type UniEvent } from "./rapla";
 import { reminders } from "./reminders";
 import { schedule } from "./notify";
+import { currentSubscription, syncWebPush } from "./webpush";
 import { profileText } from "./training";
 
 type Store = {
@@ -310,14 +311,37 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     );
     return () => clearTimeout(timer);
   }, [ready, focusEnd, focusId, update]);
-  // Reminders are recomputed shortly after any change to the plan.
+  // Reminders are recomputed shortly after any change to the plan. On the web
+  // an active push subscription (home screen app) takes over delivery.
+  const [wakeTick, setWakeTick] = useState(0);
+  const pushed = useRef({ key: "", at: 0 });
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (value) => {
+      if (value === "active") setWakeTick((n) => n + 1);
+    });
+    return () => subscription.remove();
+  }, []);
   useEffect(() => {
     if (!ready) return;
     const timer = setTimeout(() => {
-      void schedule(reminders(state)).catch(() => {});
+      const list = reminders(state);
+      if (Platform.OS !== "web") {
+        void schedule(list).catch(() => {});
+        return;
+      }
+      void currentSubscription().then((sub) => {
+        if (!sub || !state.notify.enabled) return schedule(list);
+        void schedule([]);
+        const key = JSON.stringify(list);
+        // Resend at least every 30 minutes so briefing texts stay fresh.
+        if (key === pushed.current.key && Date.now() - pushed.current.at < 30 * 60 * 1000) return;
+        return syncWebPush(state.apiUrl, state.accessToken, list).then((ok) => {
+          if (ok) pushed.current = { key, at: Date.now() };
+        });
+      }).catch(() => {});
     }, 1500);
     return () => clearTimeout(timer);
-  }, [ready, state]);
+  }, [ready, state, wakeTick]);
   const pushProfile = useCallback(async () => {
     if (!state.accessToken)
       return "Profil lokal gespeichert. Für die Essensplanung den App-Zugang eintragen.";

@@ -3,7 +3,7 @@ import { agenda, briefing } from "./agenda.ts";
 import { minutes } from "./rapla.ts";
 import { examKinds, focusPick, hoursLabel, upcomingExams } from "./study.ts";
 
-export type Reminder = { id: string; at: number; title: string; body: string };
+export type Reminder = { id: string; at: number; title: string; body: string; url: string };
 
 function at(day: string, mins: number) {
   const d = parseDate(day);
@@ -18,10 +18,11 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
   const list: Reminder[] = [];
   if (state.activeFocus && state.activeFocus.pausedLeft === null && state.activeFocus.endsAt > now)
     list.push({
-      id: "focus",
+      id: "focus:" + state.activeFocus.startedAt,
       at: state.activeFocus.endsAt,
       title: "Fokusrunde geschafft! 🎉",
       body: state.activeFocus.label + " – Zeit für eine kurze Pause.",
+      url: "/focus",
     });
   if (!n.enabled) return list;
   const today = dateKey(new Date(now));
@@ -60,6 +61,7 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
               : item.kind === "task"
                 ? "Startet " + (lead ? "in " + lead + " Min." : "jetzt") + " · " + item.sub
                 : "Tief durchatmen. Du bist vorbereitet.",
+        url: item.kind === "training" ? "/training" : item.kind === "exam" ? "/study" : "/",
       });
     }
     if (n.briefing) {
@@ -69,6 +71,7 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
         at: at(day, minutes(n.briefing)),
         title: "Guten Morgen" + (state.name ? ", " + state.name : "") + " ☀️",
         body: lines.length ? lines.slice(0, 4).join(" · ") : "Heute ist nichts geplant – plane deinen Tag in Hap.",
+        url: "/",
       });
     }
     if (n.review) {
@@ -80,6 +83,7 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
         body: pick
           ? "Noch " + hoursLabel(pick.perDay - pick.today) + " für " + pick.exam.title + " offen. Hake ab, was du geschafft hast."
           : "Hake ab, was du heute geschafft hast, und plane morgen.",
+        url: pick ? "/focus?exam=" + pick.exam.id : "/",
       });
     }
     if (n.exams)
@@ -92,6 +96,7 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
             body:
               s.exam.title +
               (s.left ? " · noch " + hoursLabel(s.left) + " Lernzeit offen" : " · Lernziel erreicht 💯"),
+            url: "/study",
           });
   }
   const seen = new Set<string>();

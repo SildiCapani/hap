@@ -19,7 +19,10 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { router, usePathname } from "expo-router";
 import {
   ArrowRight,
@@ -353,6 +356,7 @@ export function Shell({
   const wide = width >= 1000;
   const mobile = width < 680;
   const path = usePathname();
+  const insets = useSafeAreaInsets();
   const { state, ready, saved, error, retry } = usePlanner();
   const today = useToday();
   const [editor, setEditor] = useState<{
@@ -436,11 +440,18 @@ export function Shell({
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={[s.topbar, mobile && { paddingHorizontal: 20 }]}>
+          <View
+            style={[
+              s.topbar,
+              mobile && { paddingHorizontal: 18, height: 56 },
+            ]}
+          >
             {!wide ? (
               <View style={[s.brand, { gap: 8 }]}>
-                <BrandMark size={31} />
-                <Text style={[s.brandName, { fontSize: 26 }]}>hap.</Text>
+                <BrandMark size={mobile ? 26 : 31} />
+                <Text style={[s.brandName, { fontSize: mobile ? 22 : 26 }]}>
+                  hap.
+                </Text>
               </View>
             ) : (
               <View style={s.row}>
@@ -498,7 +509,11 @@ export function Shell({
             <ScrollView
               contentContainerStyle={[
                 s.scrollContent,
-                mobile && { padding: 20, paddingBottom: 115 },
+                mobile && {
+                  padding: 16,
+                  paddingTop: 18,
+                  paddingBottom: 96 + insets.bottom,
+                },
                 !wide && !mobile && { paddingBottom: 110 },
               ]}
             >
@@ -537,32 +552,50 @@ export function Shell({
             </ScrollView>
           )}
           {!wide && (
-            <View style={s.mobileNav}>
-              {nav.map((n) => (
-                <Pressable
-                  key={n.path}
-                  accessibilityRole="link"
-                  accessibilityLabel={n.label}
-                  onPress={() => router.push(n.path as "/")}
-                  style={s.mobileNavItem}
-                >
-                  <n.icon
-                    size={22}
-                    color={path === n.path ? C.green : C.muted}
-                  />
-                  <Text
-                    style={[
-                      s.micro,
-                      {
-                        color: path === n.path ? C.green : C.muted,
-                        fontWeight: path === n.path ? "700" : "400",
-                      },
-                    ]}
-                  >
-                    {n.label}
-                  </Text>
-                </Pressable>
-              ))}
+            <View
+              style={[s.mobileNav, { paddingBottom: Math.max(10, insets.bottom) }]}
+            >
+              {nav
+                .filter((n) => n.path !== "/progress")
+                .map((n) => {
+                  const active =
+                    path === n.path || (n.path === "/study" && path === "/focus");
+                  return (
+                    <Pressable
+                      key={n.path}
+                      accessibilityRole="link"
+                      accessibilityLabel={n.label}
+                      accessibilityState={{ selected: active }}
+                      onPress={() => {
+                        if (!active) tap();
+                        router.push(n.path as "/");
+                      }}
+                      style={s.mobileNavItem}
+                    >
+                      <View
+                        style={[
+                          s.mobileNavIcon,
+                          active && { backgroundColor: C.pale },
+                        ]}
+                      >
+                        <n.icon
+                          size={21}
+                          color={active ? C.green : C.muted}
+                          strokeWidth={active ? 2.3 : 1.8}
+                        />
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: active ? C.ink : C.muted,
+                          fontWeight: active ? "700" : "500",
+                        }}
+                      >
+                        {n.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
             </View>
           )}
         </View>
@@ -962,7 +995,7 @@ function TaskEditor({
   close: () => void;
 }) {
   const { update } = usePlanner();
-  const { width } = useWindowDimensions();
+  const sheet = useSheetLayout(560);
   const base = task || preset;
   const [title, setTitle] = useState(base?.title || "");
   const [note, setNote] = useState(base?.note || "");
@@ -1028,21 +1061,21 @@ function TaskEditor({
     close();
   }
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={close}>
-      <View style={s.modalBackdrop}>
+    <Modal
+      visible
+      transparent
+      animationType={sheet.animation}
+      onRequestClose={close}
+    >
+      <View style={[s.modalBackdrop, sheet.backdrop]}>
         <Pressable
           accessibilityLabel="Dialog schließen"
           onPress={close}
           style={StyleSheet.absoluteFill}
         />
-        <View
-          accessibilityViewIsModal
-          style={[
-            s.modal,
-            { width: width < 600 ? "95%" : 560, maxHeight: "92%" },
-          ]}
-        >
-          <View style={s.modalHeader}>
+        <View accessibilityViewIsModal style={[s.modal, sheet.modal]}>
+          <Grabber show={sheet.phone} />
+          <View style={[s.modalHeader, sheet.phone && { padding: 20 }]}>
             <View style={{ flex: 1 }}>
               <Text style={s.h2}>
                 {task ? "Aufgabe bearbeiten" : "Etwas Gutes vornehmen"}
@@ -1240,6 +1273,47 @@ function TaskEditor({
     </Modal>
   );
 }
+// On phones dialogs become bottom sheets: reachable with the thumb, full width.
+function useSheetLayout(preferred: number) {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const phone = width < 600;
+  return {
+    phone,
+    animation: (phone && Platform.OS !== "web" ? "slide" : "fade") as
+      | "slide"
+      | "fade",
+    backdrop: phone
+      ? { justifyContent: "flex-end" as const, paddingVertical: 0 }
+      : null,
+    modal: phone
+      ? {
+          width: "100%" as const,
+          maxHeight: "94%" as const,
+          borderBottomLeftRadius: 0,
+          borderBottomRightRadius: 0,
+          paddingBottom: insets.bottom,
+        }
+      : {
+          width: width < preferred + 40 ? ("95%" as const) : preferred,
+          maxHeight: "92%" as const,
+        },
+  };
+}
+function Grabber({ show }: { show: boolean }) {
+  return show ? (
+    <View
+      style={{
+        alignSelf: "center",
+        width: 40,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: "#4A4A55",
+        marginTop: 9,
+      }}
+    />
+  ) : null;
+}
 export function Sheet({
   title,
   subtitle,
@@ -1255,26 +1329,23 @@ export function Sheet({
   footer?: ReactNode;
   width?: number;
 }) {
-  const { width } = useWindowDimensions();
+  const sheet = useSheetLayout(preferred);
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={close}>
-      <View style={s.modalBackdrop}>
+    <Modal
+      visible
+      transparent
+      animationType={sheet.animation}
+      onRequestClose={close}
+    >
+      <View style={[s.modalBackdrop, sheet.backdrop]}>
         <Pressable
           accessibilityLabel="Dialog schließen"
           onPress={close}
           style={StyleSheet.absoluteFill}
         />
-        <View
-          accessibilityViewIsModal
-          style={[
-            s.modal,
-            {
-              width: width < preferred + 40 ? "95%" : preferred,
-              maxHeight: "92%",
-            },
-          ]}
-        >
-          <View style={s.modalHeader}>
+        <View accessibilityViewIsModal style={[s.modal, sheet.modal]}>
+          <Grabber show={sheet.phone} />
+          <View style={[s.modalHeader, sheet.phone && { padding: 20 }]}>
             <View style={{ flex: 1 }}>
               <Text style={s.h2}>{title}</Text>
               {subtitle ? (
@@ -1669,11 +1740,17 @@ export const s = StyleSheet.create({
     backgroundColor: "#17181C",
     borderTopWidth: 1,
     borderColor: C.line,
-    paddingTop: 13,
-    paddingBottom: 23,
+    paddingTop: 8,
     justifyContent: "space-around",
   },
-  mobileNavItem: { alignItems: "center", gap: 7, flex: 1 },
+  mobileNavItem: { alignItems: "center", gap: 3, flex: 1, minHeight: 48 },
+  mobileNavIcon: {
+    width: 52,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "#08090DBB",
@@ -1709,11 +1786,11 @@ export const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#3B3B45",
     borderRadius: 9,
-    padding: 13,
-    fontSize: 13,
+    padding: 12,
+    fontSize: 16,
     color: C.ink,
     backgroundColor: "#18191E",
-    minHeight: 44,
+    minHeight: 46,
   },
   categoryOption: {
     flex: 1,

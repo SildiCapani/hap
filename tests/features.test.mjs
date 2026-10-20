@@ -110,10 +110,11 @@ test("reminders cover lectures, briefing and the running focus round", () => {
   assert.equal(new Date(lecture.at).getMinutes(), 45);
   assert.match(lecture.body, /A4\.06/);
   assert.ok(list.some((r) => r.id === "brief:2026-10-20"));
-  assert.equal(list[0].id, "focus");
+  assert.equal(list[0].id, "focus:" + now);
+  assert.equal(list[0].url, "/focus");
   assert.ok(list.length <= 60);
   state.notify.enabled = false;
-  assert.deepEqual(reminders(state, now).map((r) => r.id), ["focus"]);
+  assert.deepEqual(reminders(state, now).map((r) => r.id), ["focus:" + now]);
 });
 
 test("old backups gain the new fields and XP levels grow", () => {

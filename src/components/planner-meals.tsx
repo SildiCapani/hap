@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Platform, Pressable, Share, Switch, Text, View } from "react-native";
-import { askPermission, tap } from "@/lib/notify";
+import { tap } from "@/lib/notify";
+import { InstallCard, useNotifyToggle, usePushActive } from "./install-card";
 import { validRaplaUrl } from "@/lib/rapla";
 import { goals, nutrition, workoutsFor } from "@/lib/training";
 import type { Goal } from "@/lib/planner";
@@ -464,6 +465,8 @@ function NotifySettings() {
   const { state, update } = usePlanner();
   const n = state.notify;
   const [message, setMessage] = useState("");
+  const toggle = useNotifyToggle();
+  const push = usePushActive();
   const set = (patch: Partial<typeof n>) =>
     update((prev) => ({ ...prev, notify: { ...prev.notify, ...patch } }));
   const toggles = [
@@ -482,27 +485,25 @@ function NotifySettings() {
         <View style={{ flex: 1, marginRight: 18 }}>
           <Text style={s.h3}>Erinnerungen aktivieren</Text>
           <Text style={[s.muted, { lineHeight: 20, marginTop: 6 }]}>
-            {Platform.OS === "web"
-              ? "Im Browser kommen Erinnerungen nur, solange Hap in einem Tab geöffnet ist. Zuverlässig am Handy mit der App."
-              : "Hap plant Erinnerungen für die nächsten Tage direkt auf deinem Handy."}
+            {Platform.OS !== "web"
+              ? "Hap plant Erinnerungen für die nächsten Tage direkt auf deinem Handy."
+              : push && n.enabled
+                ? "Push aktiv: Erinnerungen kommen auch, wenn Hap geschlossen ist."
+                : "Am zuverlässigsten, wenn Hap auf deinem Home-Bildschirm liegt. Im normalen Browser-Tab nur, solange Hap offen ist."}
           </Text>
         </View>
         <Switch
           accessibilityLabel="Erinnerungen aktivieren"
           value={n.enabled}
-          onValueChange={async (on) => {
-            if (on && !(await askPermission())) {
-              setMessage("Benachrichtigungen sind nicht erlaubt. Bitte in den System- bzw. Browser-Einstellungen freigeben.");
-              return;
-            }
-            setMessage(on ? "Erinnerungen sind aktiv." : "");
-            set({ enabled: on });
+          onValueChange={(on) => {
+            void toggle(on).then(setMessage);
           }}
           trackColor={{ false: "#49434F", true: "#BC5568" }}
           thumbColor="white"
         />
       </View>
-      {message ? <Text style={s.micro}>{message}</Text> : null}
+      {message ? <Text style={[s.micro, { lineHeight: 17 }]}>{message}</Text> : null}
+      <InstallCard dismissible={false} />
       {n.enabled && (
         <>
           {toggles.map((t) => (

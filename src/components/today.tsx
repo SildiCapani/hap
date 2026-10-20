@@ -42,6 +42,7 @@ import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Bar } from "./charts";
 import { DayTimeline, useNow } from "./day-timeline";
+import { InstallCard } from "./install-card";
 import { Button, C, Pill, Shell, TaskList, useToday, WeekStrip, s } from "./planner-ui";
 
 function Pulse({ color }: { color: string }) {
@@ -96,7 +97,12 @@ function NowCard() {
             {parseDate(today).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}
           </Text>
         </View>
-        <View style={[s.row, { gap: 6 }]}>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Fortschritt öffnen"
+          onPress={() => router.push("/progress" as "/")}
+          style={[s.row, { gap: 6 }]}
+        >
           <Pill bg="#2A2B32" color="#FFD0D5">
             ✓ {p.done}/{p.total}
           </Pill>
@@ -106,7 +112,7 @@ function NowCard() {
           <Pill bg="#2A2B32" color="#FFD0D5">
             Lv {level.level} · +{dayXp(state, today)}
           </Pill>
-        </View>
+        </Pressable>
       </View>
       <Pressable
         accessibilityRole="button"
@@ -306,7 +312,7 @@ export function QuickAdd({ day }: { day: string }) {
           placeholder="Was steht an? z. B. „morgen 10 uhr DB lernen 2h“"
           placeholderTextColor="#7E7887"
           accessibilityLabel="Schnelleingabe"
-          style={{ flex: 1, color: C.ink, fontSize: 14, paddingVertical: 8, minHeight: 38 }}
+          style={{ flex: 1, color: C.ink, fontSize: 16, paddingVertical: 8, minHeight: 40 }}
         />
         <Pressable
           accessibilityRole="button"
@@ -450,6 +456,7 @@ function TodayContent() {
       <View style={{ flex: 1, minWidth: 0 }}>
         <NowCard />
         <QuickActions />
+        <InstallCard />
         <QuickAdd day={day} />
         <View style={[s.sectionHeading, { marginBottom: 12 }]}>
           <View style={s.row}>

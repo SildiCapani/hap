@@ -147,6 +147,7 @@ export type PlannerState = {
   protein: Record<string, number>;
   profile: Profile;
   notify: NotifySettings;
+  installHidden: boolean;
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -193,6 +194,7 @@ const extras = (): Omit<
   protein: {},
   profile: { ...defaultProfile },
   notify: { ...defaultNotify },
+  installHidden: false,
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {
