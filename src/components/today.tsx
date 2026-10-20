@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Brain,
   CalendarClock,
+  CalendarDays,
   CheckCheck,
   Dumbbell,
   Flag,
@@ -43,6 +44,7 @@ import { tap } from "@/lib/notify";
 import { Bar } from "./charts";
 import { DayTimeline, useNow } from "./day-timeline";
 import { InstallCard } from "./install-card";
+import { DueTodos } from "./todos";
 import { Button, C, Pill, Shell, TaskList, useToday, WeekStrip, s } from "./planner-ui";
 
 function Pulse({ color }: { color: string }) {
@@ -456,6 +458,7 @@ function TodayContent() {
       <View style={{ flex: 1, minWidth: 0 }}>
         <NowCard />
         <QuickActions />
+        <DueTodos />
         <InstallCard />
         <QuickAdd day={day} />
         <View style={[s.sectionHeading, { marginBottom: 12 }]}>
@@ -470,6 +473,15 @@ function TodayContent() {
                 <Text style={s.link}>Zu heute</Text>
               </Pressable>
             )}
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="Monatskalender öffnen"
+              onPress={() => router.push("/calendar" as "/")}
+              style={s.filter}
+            >
+              <CalendarDays size={14} color={C.green} />
+              <Text style={s.link}>Monat</Text>
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={mode === "timeline" ? "Als Liste anzeigen" : "Als Zeitplan anzeigen"}

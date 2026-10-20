@@ -103,6 +103,34 @@ export type ActiveWorkout = {
   startedAt: number;
   sets: Record<string, SetDraft[]>;
 };
+export type RemindMode = "none" | "once" | "daily" | "weekly" | "hourly" | "before";
+export type Todo = {
+  id: string;
+  title: string;
+  due: string; // "YYYY-MM-DDTHH:MM" or ""
+  remind: {
+    mode: RemindMode;
+    at: string; // once: "YYYY-MM-DDTHH:MM"
+    time: string; // daily/weekly: "HH:MM"
+    weekday: number;
+    hours: number; // hourly: every n hours between 08:00 and 22:00
+    before: number; // minutes before due
+  };
+  createdAt: string;
+  doneAt: string | null;
+};
+export type FoodEntry = {
+  id: string;
+  date: string;
+  time: string;
+  name: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  items: { name: string; amount: string; kcal: number }[];
+  source: "photo" | "manual";
+};
 export type Goal = "bulk" | "cut" | "maintain";
 export type Profile = {
   age: number;
@@ -149,6 +177,8 @@ export type PlannerState = {
   notify: NotifySettings;
   installHidden: boolean;
   cloudLinked: boolean;
+  todos: Todo[];
+  foodLog: FoodEntry[];
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -197,6 +227,8 @@ const extras = (): Omit<
   notify: { ...defaultNotify },
   installHidden: false,
   cloudLinked: false,
+  todos: [],
+  foodLog: [],
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {
@@ -207,6 +239,23 @@ export const repeats: Record<Repeat, string> = {
 };
 export function dateKey(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+// Local "YYYY-MM-DDTHH:MM" (no time zone), used for deadlines and reminders.
+export function localStamp(date = new Date()): string {
+  return (
+    dateKey(date) +
+    "T" +
+    String(date.getHours()).padStart(2, "0") +
+    ":" +
+    String(date.getMinutes()).padStart(2, "0")
+  );
+}
+export function parseStamp(stamp: string): Date {
+  const [day, time = "00:00"] = stamp.split("T");
+  const d = parseDate(day);
+  const [h, m] = time.split(":").map(Number);
+  d.setHours(h, m, 0, 0);
+  return d;
 }
 export function parseDate(date: string): Date {
   return new Date(`${date}T12:00:00`);
@@ -273,7 +322,8 @@ export function dayXp(state: PlannerState, day: string): number {
     .filter((f) => f.date === day)
     .reduce((sum, f) => sum + f.minutes, 0);
   const training = state.workoutLogs.filter((l) => l.date === day).length * 60;
-  return tasks + focus + training;
+  const todos = state.todos.filter((t) => t.doneAt?.slice(0, 10) === day).length * 15;
+  return tasks + focus + training + todos;
 }
 export function totalXp(state: PlannerState, today: string): number {
   const days = new Set<string>([
@@ -282,6 +332,7 @@ export function totalXp(state: PlannerState, today: string): number {
       .map((k) => k.slice(-10)),
     ...state.focus.map((f) => f.date),
     ...state.workoutLogs.map((l) => l.date),
+    ...state.todos.flatMap((t) => (t.doneAt ? [t.doneAt.slice(0, 10)] : [])),
   ]);
   let xp = 0;
   for (const d of days) if (d <= today) xp += dayXp(state, d);
@@ -446,6 +497,8 @@ export function readState(raw: string): PlannerState {
   if (
     typeof value.raplaUrl !== "string" ||
     ![
+      value.todos,
+      value.foodLog,
       value.uniEvents,
       value.exams,
       value.focus,
@@ -469,6 +522,8 @@ export function readState(raw: string): PlannerState {
         typeof w.name === "string" && isArray(w.weekdays) && isArray(w.exercises),
     ) ||
     !value.workoutLogs.every((l) => validDate(l.date) && isArray(l.entries)) ||
+    !value.todos.every((t) => typeof t.id === "string" && typeof t.title === "string" && !!t.remind) ||
+    !value.foodLog.every((f) => validDate(f.date) && Number.isFinite(f.kcal)) ||
     typeof value.protein !== "object" ||
     isArray(value.protein)
   )

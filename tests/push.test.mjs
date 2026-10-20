@@ -42,3 +42,35 @@ test("app endpoints reject requests without the app token", async () => {
   assert.equal((await generate(new Request("https://e.test"))).status, 405);
   assert.equal((await push(new Request("https://e.test"))).status, 200, "public key stays readable");
 });
+
+test("food estimates are cleaned and summed, inputs are checked", async () => {
+  const { validateFood, validImage, analyzeFood } = await import("../netlify/lib/food.mjs");
+  const food = validateFood({
+    name: " Nudeln ",
+    confidence: "mittel",
+    hint: "",
+    items: [
+      { name: "Pasta", amount: "200 g", kcal: 300.4, protein: 11, carbs: 60, fat: 2 },
+      { name: "Soße", amount: "100 g", kcal: -5, protein: 3, carbs: 8, fat: 9999 },
+      { name: "", amount: "", kcal: 100, protein: 0, carbs: 0, fat: 0 },
+    ],
+  });
+  assert.equal(food.name, "Nudeln");
+  assert.equal(food.items.length, 2);
+  assert.equal(food.kcal, 300);
+  assert.equal(food.fat, 402);
+  assert.equal(validImage("data:image/jpeg;base64,AAAA"), true);
+  assert.equal(validImage("https://evil.example/x.jpg"), false);
+  let sent;
+  const result = await analyzeFood(
+    { image: "", note: "Mensa Schnitzel mit Pommes" },
+    { OPENAI_API_KEY: "k", OPENAI_MODEL: "m" },
+    async (url, options) => {
+      sent = JSON.parse(options.body);
+      return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ name: "Schnitzel", confidence: "mittel", hint: "", items: [{ name: "Schnitzel", amount: "1", kcal: 500, protein: 30, carbs: 25, fat: 28 }] }) }] }] });
+    },
+  );
+  assert.equal(result.kcal, 500);
+  assert.equal(sent.store, false);
+  assert.equal(sent.input[0].content.length, 1, "text only without photo");
+});

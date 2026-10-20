@@ -42,6 +42,14 @@
         {
           "color": "#F07B83"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Hap nutzt deine Fotos, um die Kalorien deiner Mahlzeiten zu schätzen.",
+          "cameraPermission": "Hap nutzt die Kamera, um die Kalorien deiner Mahlzeiten zu schätzen.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

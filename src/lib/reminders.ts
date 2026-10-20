@@ -2,6 +2,7 @@ import { dateKey, parseDate, shiftDay, type PlannerState } from "./planner.ts";
 import { agenda, briefing } from "./agenda.ts";
 import { minutes } from "./rapla.ts";
 import { examKinds, focusPick, hoursLabel, upcomingExams } from "./study.ts";
+import { dueLabel, todoTimes } from "./todos.ts";
 
 export type Reminder = { id: string; at: number; title: string; body: string; url: string };
 
@@ -25,6 +26,15 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
       url: "/focus",
     });
   if (!n.enabled) return list;
+  for (const todo of state.todos)
+    for (const t of todoTimes(todo, now, horizon))
+      list.push({
+        id: "todo:" + todo.id + ":" + t,
+        at: t,
+        title: "📝 " + todo.title,
+        body: todo.due ? "Fällig: " + dueLabel(todo, new Date(t)) : "Auf deiner To-do-Liste",
+        url: "/todos",
+      });
   const today = dateKey(new Date(now));
   for (let i = 0; i < horizon; i++) {
     const day = shiftDay(today, i);

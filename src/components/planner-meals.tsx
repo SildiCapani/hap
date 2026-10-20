@@ -4,13 +4,13 @@ import { tap, testLocal } from "@/lib/notify";
 import { InstallCard, useNotifyToggle, usePushActive } from "./install-card";
 import { sendTestPush } from "@/lib/webpush";
 import { validRaplaUrl } from "@/lib/rapla";
-import { goals, nutrition, workoutsFor } from "@/lib/training";
+import { goals } from "@/lib/training";
 import type { Goal } from "@/lib/planner";
-import { Bar } from "./charts";
+import { FoodTracker } from "./food";
 import { router } from "expo-router";
 import {
   ArrowDownToLine,
-  Beef,
+  Flame,
   Bell,
   Cloud,
   Sparkles,
@@ -123,312 +123,249 @@ export function ProfileSheet({ close }: { close: () => void }) {
   );
 }
 
-function NutritionCard() {
-  const { state, update } = usePlanner();
-  const today = useToday();
-  const [profile, setProfile] = useState(false);
-  const training = workoutsFor(state, today).length > 0;
-  const t = nutrition(state.profile, training);
-  const protein = state.protein[today] || 0;
-  return (
-    <View style={[s.card, { padding: 22, gap: 16, marginBottom: 22 }]}>
-      <View style={s.sectionHeading}>
-        <View style={s.row}>
-          <Beef size={18} color={C.green} />
-          <Text style={s.h3}>Deine Ziele heute</Text>
-          <Pill>{training ? "Trainingstag" : "Ruhetag"}</Pill>
-        </View>
-        <Pressable accessibilityRole="button" onPress={() => setProfile(true)} style={s.row}>
-          <User size={14} color={C.green} />
-          <Text style={s.link}>{goals[state.profile.goal].label} · {state.profile.weight} kg</Text>
-        </Pressable>
-      </View>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-        {[
-          { label: "KALORIEN", value: t.kcal + "", unit: "kcal" },
-          { label: "PROTEIN", value: t.protein + "", unit: "g" },
-          { label: "KOHLENHYDRATE", value: t.carbs + "", unit: "g" },
-          { label: "FETT", value: t.fat + "", unit: "g" },
-        ].map((x) => (
-          <View key={x.label} style={{ flexGrow: 1, flexBasis: 120, backgroundColor: "#202127", borderRadius: 12, padding: 14 }}>
-            <Text style={s.eyebrow}>{x.label}</Text>
-            <Text style={{ color: C.ink, fontSize: 22, fontWeight: "700", marginTop: 6 }}>
-              {x.value} <Text style={s.micro}>{x.unit}</Text>
-            </Text>
-          </View>
-        ))}
-      </View>
-      <View style={{ gap: 8 }}>
-        <View style={s.sectionHeading}>
-          <Text style={s.body}>
-            Protein heute: <Text style={{ fontWeight: "700" }}>{protein} g</Text> / {t.protein} g
-          </Text>
-          {protein >= t.protein && <Text style={{ color: "#98C5A9", fontSize: 12 }}>Ziel erreicht 💪</Text>}
-        </View>
-        <Bar value={protein / t.protein} color="#E5B073" />
-        <View style={s.wrap}>
-          {[10, 20, 30, 40].map((g) => (
-            <Chip
-              key={g}
-              label={"+" + g + " g"}
-              active={false}
-              onPress={() => update((prev) => ({ ...prev, protein: { ...prev.protein, [today]: (prev.protein[today] || 0) + g } }))}
-            />
-          ))}
-          {protein > 0 && (
-            <Chip label="Zurücksetzen" active={false} onPress={() => update((prev) => ({ ...prev, protein: { ...prev.protein, [today]: 0 } }))} />
-          )}
-        </View>
-      </View>
-      <Text style={[s.micro, { lineHeight: 18 }]}>
-        Richtwerte nach Mifflin-St-Jeor mit moderatem Aktivitätsfaktor – keine medizinische Beratung. Dein Profil fließt in den nächsten KI-Essensplan ein.
-      </Text>
-      {profile && <ProfileSheet close={() => setProfile(false)} />}
-    </View>
-  );
-}
-
 function MealsContent() {
   const { state, update, syncing, mealStatus, syncMeals, generateMeals } = usePlanner();
   const [generating, setGenerating] = useState("");
   const today = useToday();
-  const [tab, setTab] = useState<"plan" | "groceries">("plan");
+  const [tab, setTab] = useState<"today" | "plan" | "groceries">("today");
   const plan = state.mealPlan;
+  const tabs = [
+    { key: "today", label: "Heute", icon: Flame },
+    { key: "plan", label: "Wochenplan", icon: Utensils },
+    { key: "groceries", label: "Einkauf", icon: ShoppingBag },
+  ] as const;
   return (
     <>
-      <View style={[s.hero, { backgroundColor: "#27252D", padding: 29 }]}>
-        <View style={{ flex: 1 }}>
-          <Pill bg="#3B2934">DEINE WOCHE AUF DEM TELLER</Pill>
-          <Text style={[s.h2, { marginTop: 18, fontSize: 26 }]}>
-            Gut essen. Weniger planen.
-          </Text>
-          <Text
-            style={[s.body, { color: "#B4A6B8", marginTop: 9, lineHeight: 23 }]}
-          >
-            Dein Wochenplan und eine Einkaufsliste, die mitdenkt.
-          </Text>
-        </View>
-        <Utensils size={48} color="#CC929F" strokeWidth={1.1} />
-      </View>
-      <NutritionCard />
-      <View
-        style={[
-          s.sectionHeading,
-          { flexWrap: "wrap", gap: 12, marginBottom: 20 },
-        ]}
-      >
-        <View style={s.row}>
-          <Button quiet onPress={() => setTab("plan")} icon={Utensils}>
-            Wochenplan
-          </Button>
-          <Button quiet onPress={() => setTab("groceries")} icon={ShoppingBag}>
-            Einkaufsliste
-          </Button>
-        </View>
-        <Button
-          quiet
-          onPress={() => void syncMeals()}
-          disabled={syncing}
-          icon={RefreshCw}
-        >
-          {syncing ? "Wird geladen …" : "Aktualisieren"}
-        </Button>
-      </View>
-      {mealStatus ? (
-        <View style={s.notice}>
-          <Text style={[s.body, { lineHeight: 22 }]}>{mealStatus}</Text>
-        </View>
-      ) : null}
-      {state.accessToken && (!plan || plan.weekStart < monday(today)) && (
-        <View style={[s.card, { padding: 20, gap: 12, marginBottom: 18 }]}>
-          <Text style={s.h3}>Noch kein Plan für diese Woche</Text>
-          <Text style={[s.muted, { lineHeight: 19 }]}>
-            Die KI erstellt Frühstück, Mittag- und Abendessen plus Einkaufsliste – passend zu deinem Profil und deinen Trainingstagen.
-          </Text>
-          <Button
-            icon={Sparkles}
-            disabled={!!generating && generating.startsWith("…")}
+      <View style={[s.row, { backgroundColor: "#1C1D22", borderRadius: 12, padding: 4, marginBottom: 18, borderWidth: 1, borderColor: C.line }]}>
+        {tabs.map((t) => (
+          <Pressable
+            key={t.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === t.key }}
             onPress={() => {
-              tap("medium");
-              setGenerating("… Wird gestartet");
-              void generateMeals().then(setGenerating);
+              tap();
+              setTab(t.key);
             }}
+            style={[s.row, { flex: 1, justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 9 }, tab === t.key && { backgroundColor: C.pale }]}
           >
-            Plan jetzt erstellen
-          </Button>
-          {generating ? <Text style={[s.micro, { lineHeight: 17 }]}>{generating}</Text> : null}
-        </View>
-      )}
-      {!plan ? (
-        <View style={[s.card, s.empty, { paddingVertical: 50 }]}>
-          <Leaf size={45} color="#C192A1" strokeWidth={1.3} />
-          <Text style={[s.h2, { marginTop: 10, textAlign: "center" }]}>
-            Hier zieht dein Essensplan ein.
-          </Text>
-          <Text
-            style={[
-              s.body,
-              {
-                color: C.muted,
-                textAlign: "center",
-                maxWidth: 460,
-                lineHeight: 23,
-              },
-            ]}
-          >
-            Die automatische Erstellung ist vorbereitet. Nach der
-            Netlify-Einrichtung kommt jede Woche dein neuer Plan hier an.
-          </Text>
-          <Button
-            quiet
-            onPress={() => router.push("/settings")}
-            icon={Settings2}
-          >
-            Verbindung einrichten
-          </Button>
-        </View>
+            <t.icon size={15} color={tab === t.key ? C.green : C.muted} />
+            <Text style={{ color: tab === t.key ? C.ink : C.muted, fontWeight: tab === t.key ? "700" : "500", fontSize: 13 }}>{t.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {tab === "today" ? (
+        <FoodTracker />
       ) : (
         <>
-          {plan.weekStart !== monday(today) && (
+          <View style={[s.row, { justifyContent: "flex-end", marginBottom: 14 }]}>
+            <Button
+              quiet
+              onPress={() => void syncMeals()}
+              disabled={syncing}
+              icon={RefreshCw}
+            >
+              {syncing ? "Wird geladen …" : "Aktualisieren"}
+            </Button>
+          </View>
+          {mealStatus ? (
             <View style={s.notice}>
-              <Text style={s.body}>
-                {plan.weekStart > today
-                  ? "Der Plan für die kommende Woche ist schon da."
-                  : "Du siehst einen älteren Plan. Aktualisiere ihn, sobald der neue erstellt wurde."}
+              <Text style={[s.body, { lineHeight: 22 }]}>{mealStatus}</Text>
+            </View>
+          ) : null}
+          {state.accessToken && (!plan || plan.weekStart < monday(today)) && (
+            <View style={[s.card, { padding: 20, gap: 12, marginBottom: 18 }]}>
+              <Text style={s.h3}>Noch kein Plan für diese Woche</Text>
+              <Text style={[s.muted, { lineHeight: 19 }]}>
+                Die KI erstellt Frühstück, Mittag- und Abendessen plus Einkaufsliste – passend zu deinem Profil und deinen Trainingstagen.
               </Text>
+              <Button
+                icon={Sparkles}
+                disabled={!!generating && generating.startsWith("…")}
+                onPress={() => {
+                  tap("medium");
+                  setGenerating("… Wird gestartet");
+                  void generateMeals().then(setGenerating);
+                }}
+              >
+                Plan jetzt erstellen
+              </Button>
+              {generating ? <Text style={[s.micro, { lineHeight: 17 }]}>{generating}</Text> : null}
             </View>
           )}
-          <Heading
-            detail={
-              "Ab " + parseDate(plan.weekStart).toLocaleDateString("de-DE")
-            }
-          >
-            {tab === "plan"
-              ? "Für jeden Tag etwas Gutes"
-              : String(
-                  plan.groceries.filter(
-                    (g, i) =>
-                      state.groceries[plan.weekStart + ":" + i + ":" + g.name],
-                  ).length,
-                ) +
-                "/" +
-                plan.groceries.length +
-                " eingekauft"}
-          </Heading>
-          <View style={{ gap: 13, marginTop: 18 }}>
-            {tab === "plan"
-              ? plan.days.map((d) => (
-                  <View key={d.date} style={[s.card, { padding: 23 }]}>
-                    <View style={[s.sectionHeading, { marginBottom: 18 }]}>
-                      <Text style={s.h3}>
-                        {parseDate(d.date).toLocaleDateString("de-DE", {
-                          weekday: "long",
-                          day: "numeric",
-                          month: "numeric",
-                        })}
-                      </Text>
-                      {d.date === today && <Pill>Heute</Pill>}
-                    </View>
-                    {[
-                      { label: "Frühstück", value: d.breakfast, icon: Coffee },
-                      { label: "Mittagessen", value: d.lunch, icon: Sun },
-                      { label: "Abendessen", value: d.dinner, icon: Utensils },
-                    ].map((m) => (
-                      <View
-                        key={m.label}
-                        style={[s.row, { paddingVertical: 10 }]}
-                      >
-                        <m.icon size={16} color="#BA8C9E" />
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.micro}>{m.label}</Text>
-                          <Text style={[s.body, { marginTop: 4 }]}>
-                            {m.value}
+          {!plan ? (
+            <View style={[s.card, s.empty, { paddingVertical: 50 }]}>
+              <Leaf size={45} color="#C192A1" strokeWidth={1.3} />
+              <Text style={[s.h2, { marginTop: 10, textAlign: "center" }]}>
+                Hier zieht dein Essensplan ein.
+              </Text>
+              <Text
+                style={[
+                  s.body,
+                  {
+                    color: C.muted,
+                    textAlign: "center",
+                    maxWidth: 460,
+                    lineHeight: 23,
+                  },
+                ]}
+              >
+                Die automatische Erstellung ist vorbereitet. Nach der
+                Netlify-Einrichtung kommt jede Woche dein neuer Plan hier an.
+              </Text>
+              <Button
+                quiet
+                onPress={() => router.push("/settings")}
+                icon={Settings2}
+              >
+                Verbindung einrichten
+              </Button>
+            </View>
+          ) : (
+            <>
+              {plan.weekStart !== monday(today) && (
+                <View style={s.notice}>
+                  <Text style={s.body}>
+                    {plan.weekStart > today
+                      ? "Der Plan für die kommende Woche ist schon da."
+                      : "Du siehst einen älteren Plan. Aktualisiere ihn, sobald der neue erstellt wurde."}
+                  </Text>
+                </View>
+              )}
+              <Heading
+                detail={
+                  "Ab " + parseDate(plan.weekStart).toLocaleDateString("de-DE")
+                }
+              >
+                {tab === "plan"
+                  ? "Für jeden Tag etwas Gutes"
+                  : String(
+                      plan.groceries.filter(
+                        (g, i) =>
+                          state.groceries[plan.weekStart + ":" + i + ":" + g.name],
+                      ).length,
+                    ) +
+                    "/" +
+                    plan.groceries.length +
+                    " eingekauft"}
+              </Heading>
+              <View style={{ gap: 13, marginTop: 18 }}>
+                {tab === "plan"
+                  ? plan.days.map((d) => (
+                      <View key={d.date} style={[s.card, { padding: 23 }]}>
+                        <View style={[s.sectionHeading, { marginBottom: 18 }]}>
+                          <Text style={s.h3}>
+                            {parseDate(d.date).toLocaleDateString("de-DE", {
+                              weekday: "long",
+                              day: "numeric",
+                              month: "numeric",
+                            })}
                           </Text>
+                          {d.date === today && <Pill>Heute</Pill>}
                         </View>
+                        {[
+                          { label: "Frühstück", value: d.breakfast, icon: Coffee },
+                          { label: "Mittagessen", value: d.lunch, icon: Sun },
+                          { label: "Abendessen", value: d.dinner, icon: Utensils },
+                        ].map((m) => (
+                          <View
+                            key={m.label}
+                            style={[s.row, { paddingVertical: 10 }]}
+                          >
+                            <m.icon size={16} color="#BA8C9E" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={s.micro}>{m.label}</Text>
+                              <Text style={[s.body, { marginTop: 4 }]}>
+                                {m.value}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
                       </View>
-                    ))}
-                  </View>
-                ))
-              : plan.groceries.map((g, i) => {
-                  const key = plan.weekStart + ":" + i + ":" + g.name;
-                  return (
-                    <Pressable
-                      key={key}
-                      accessibilityRole="checkbox"
-                    aria-checked={!!state.groceries[key]}
-                      accessibilityState={{ checked: !!state.groceries[key] }}
-                      accessibilityLabel={g.name + " eingekauft"}
-                      onPress={() =>
-                        update((prev) => ({
-                          ...prev,
-                          groceries: {
-                            ...prev.groceries,
-                            [key]: !prev.groceries[key],
-                          },
-                        }))
-                      }
-                      style={[s.card, s.row, { padding: 19 }]}
-                    >
-                      <View
-                        style={[
-                          s.checkbox,
-                          state.groceries[key] && {
-                            backgroundColor: C.button,
-                            borderColor: C.button,
-                          },
-                        ]}
-                      >
-                        {state.groceries[key] && (
-                          <Check size={15} color="white" />
-                        )}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            s.body,
-                            state.groceries[key] && {
-                              textDecorationLine: "line-through",
-                              color: C.muted,
-                            },
-                          ]}
+                    ))
+                  : plan.groceries.map((g, i) => {
+                      const key = plan.weekStart + ":" + i + ":" + g.name;
+                      return (
+                        <Pressable
+                          key={key}
+                          accessibilityRole="checkbox"
+                        aria-checked={!!state.groceries[key]}
+                          accessibilityState={{ checked: !!state.groceries[key] }}
+                          accessibilityLabel={g.name + " eingekauft"}
+                          onPress={() =>
+                            update((prev) => ({
+                              ...prev,
+                              groceries: {
+                                ...prev.groceries,
+                                [key]: !prev.groceries[key],
+                              },
+                            }))
+                          }
+                          style={[s.card, s.row, { padding: 19 }]}
                         >
-                          {g.name}
-                        </Text>
-                        <Text style={[s.micro, { marginTop: 4 }]}>
-                          {g.category}
-                        </Text>
-                      </View>
-                      <Text style={s.muted}>{g.amount}</Text>
-                    </Pressable>
-                  );
-                })}
-          </View>
-          <View style={s.notice}>
-            <Text style={[s.body, { lineHeight: 22 }]}>
-              Mahlzeiten werden beim ersten Laden jeder Woche automatisch in
-              deinen Kalender übernommen. Dort kannst du sie abhaken, bearbeiten
-              und löschen. Gelöschte Aufgaben bleiben auch nach einer
-              Aktualisierung gelöscht.
-            </Text>
-          </View>
+                          <View
+                            style={[
+                              s.checkbox,
+                              state.groceries[key] && {
+                                backgroundColor: C.button,
+                                borderColor: C.button,
+                              },
+                            ]}
+                          >
+                            {state.groceries[key] && (
+                              <Check size={15} color="white" />
+                            )}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={[
+                                s.body,
+                                state.groceries[key] && {
+                                  textDecorationLine: "line-through",
+                                  color: C.muted,
+                                },
+                              ]}
+                            >
+                              {g.name}
+                            </Text>
+                            <Text style={[s.micro, { marginTop: 4 }]}>
+                              {g.category}
+                            </Text>
+                          </View>
+                          <Text style={s.muted}>{g.amount}</Text>
+                        </Pressable>
+                      );
+                    })}
+              </View>
+              <View style={s.notice}>
+                <Text style={[s.body, { lineHeight: 22 }]}>
+                  Mahlzeiten werden beim ersten Laden jeder Woche automatisch in
+                  deinen Kalender übernommen. Dort kannst du sie abhaken, bearbeiten
+                  und löschen. Gelöschte Aufgaben bleiben auch nach einer
+                  Aktualisierung gelöscht.
+                </Text>
+              </View>
         </>
       )}
-      <View style={s.footerNote}>
-        <ShieldCheck size={15} color={C.muted} />
-        <Text style={[s.micro, { flex: 1, lineHeight: 19 }]}>
-          Dein letzter Plan bleibt auf dem Gerät verfügbar. Hap aktualisiert
-          beim Öffnen, bei der Rückkehr zur App und alle 15 Minuten, solange die
-          App läuft.
-        </Text>
-      </View>
+      </>
+      )}
+      {tab !== "today" && (
+        <View style={s.footerNote}>
+          <ShieldCheck size={15} color={C.muted} />
+          <Text style={[s.micro, { flex: 1, lineHeight: 19 }]}>
+            Dein letzter Plan bleibt auf dem Gerät verfügbar. Hap aktualisiert
+            beim Öffnen, bei der Rückkehr zur App und alle 15 Minuten, solange die
+            App läuft.
+          </Text>
+        </View>
+      )}
     </>
   );
 }
 export function MealsScreen() {
   return (
     <Shell
-      title="Dein Essensplan"
-      subtitle="Mehr Genuss. Weniger „Was essen wir heute?“."
+      title="Essen"
+      subtitle="Kalorien im Blick, Wochenplan und Einkaufsliste."
     >
       <MealsContent />
     </Shell>

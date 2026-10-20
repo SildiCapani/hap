@@ -88,6 +88,21 @@ Die App schickt ihre anstehenden Erinnerungen (nächste 4 Tage) an die Function
 was fällig ist – Erinnerungen kommen also bis zu etwa 2 Minuten später als geplant.
 Änderungen am Plan werden beim nächsten Öffnen von Hap übertragen.
 
+## Kalorien per Foto
+
+Unter Essen → Heute schickt Hap ein verkleinertes Foto (max. 1024 px, JPEG) oder
+eine kurze Beschreibung an die Function `food-scan`. Sie fragt die OpenAI-API
+(Modell `FOOD_MODEL`, sonst `OPENAI_MODEL`; es muss Bilder verstehen) und gibt
+geschätzte kcal, Protein, Kohlenhydrate und Fett zurück. Fotos werden nicht
+gespeichert (`store: false`). Ein Tageslimit von 40 Analysen schützt vor
+unerwarteten Kosten. Mit `gpt-6-luna` kostet ein Foto rund 0,05 Cent.
+
+## Cloud-Backup
+
+Mit dem App-Zugang sichert Hap alle Daten automatisch in Netlify Blobs
+(`hap-backup`). Auf einem neuen Gerät fragt Hap, ob die Cloud-Daten übernommen
+werden sollen – ein frisches Gerät überschreibt die Sicherung nie ungefragt.
+
 ## Benachrichtigungen
 
 In der nativen App plant Hap lokale Erinnerungen für die nächsten 4 Tage

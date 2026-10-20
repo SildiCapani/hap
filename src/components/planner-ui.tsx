@@ -28,7 +28,6 @@ import {
   ArrowRight,
   BookOpen,
   Brain,
-  CalendarDays,
   Code,
   Check,
   ChevronLeft,
@@ -42,6 +41,7 @@ import {
   House,
   Laptop,
   Leaf,
+  ListChecks,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -110,7 +110,7 @@ const icons: Record<string, LucideIcon> = {
 };
 const nav = [
   { path: "/", label: "Heute", icon: House },
-  { path: "/calendar", label: "Kalender", icon: CalendarDays },
+  { path: "/todos", label: "To-dos", icon: ListChecks },
   { path: "/study", label: "Lernen", icon: Brain },
   { path: "/training", label: "Training", icon: Dumbbell },
   { path: "/meals", label: "Essen", icon: Utensils },
@@ -559,7 +559,9 @@ export function Shell({
                 .filter((n) => n.path !== "/progress")
                 .map((n) => {
                   const active =
-                    path === n.path || (n.path === "/study" && path === "/focus");
+                    path === n.path ||
+                    (n.path === "/study" && path === "/focus") ||
+                    (n.path === "/" && path === "/calendar");
                   return (
                     <Pressable
                       key={n.path}
