@@ -7,6 +7,7 @@ import { validRaplaUrl } from "@/lib/rapla";
 import { goals } from "@/lib/training";
 import type { Goal } from "@/lib/planner";
 import { FoodTracker } from "./food";
+import { currentMeals, groceriesFor, recalcGroceries, slotLabel } from "@/lib/mealplan";
 import { CalendarSettings } from "./calendar-settings";
 import { TransportSettings } from "./transport-settings";
 import { router } from "expo-router";
@@ -131,6 +132,9 @@ function MealsContent() {
   const today = useToday();
   const [tab, setTab] = useState<"today" | "plan" | "groceries">("today");
   const plan = state.mealPlan;
+  const meals = plan ? currentMeals(state, plan) : [];
+  const grocery = plan ? groceriesFor(state, plan) : null;
+  const [recalc, setRecalc] = useState("");
   const tabs = [
     { key: "today", label: "Heute", icon: Flame },
     { key: "plan", label: "Wochenplan", icon: Utensils },
@@ -241,18 +245,42 @@ function MealsContent() {
                 {tab === "plan"
                   ? "Für jeden Tag etwas Gutes"
                   : String(
-                      plan.groceries.filter(
+                      (grocery?.items || []).filter(
                         (g, i) =>
                           state.groceries[plan.weekStart + ":" + i + ":" + g.name],
                       ).length,
                     ) +
                     "/" +
-                    plan.groceries.length +
+                    (grocery?.items.length || 0) +
                     " eingekauft"}
               </Heading>
+              {tab === "groceries" && grocery?.outdated && (
+                <View style={[s.notice, { marginTop: 14, gap: 10 }]}>
+                  <Text style={[s.body, { lineHeight: 21 }]}>
+                    Du hast Gerichte geändert. Die Einkaufsliste passt noch zum ursprünglichen Plan.
+                  </Text>
+                  <Button
+                    quiet
+                    icon={Sparkles}
+                    disabled={recalc.startsWith("…")}
+                    onPress={() => {
+                      setRecalc("… Wird berechnet");
+                      const dishes = meals.flatMap((d) => d.meals.map((m) => m.current).filter((x): x is string => !!x));
+                      void recalcGroceries(state, dishes).then((result) => {
+                        if (typeof result === "string") return setRecalc(result);
+                        update((prev) => ({ ...prev, groceryList: { weekStart: plan.weekStart, basis: grocery.basis, items: result } }));
+                        setRecalc("Einkaufsliste angepasst ✓");
+                      });
+                    }}
+                  >
+                    Einkaufsliste anpassen
+                  </Button>
+                  {recalc ? <Text style={s.micro}>{recalc}</Text> : null}
+                </View>
+              )}
               <View style={{ gap: 13, marginTop: 18 }}>
                 {tab === "plan"
-                  ? plan.days.map((d) => (
+                  ? meals.map((d) => (
                       <View key={d.date} style={[s.card, { padding: 23 }]}>
                         <View style={[s.sectionHeading, { marginBottom: 18 }]}>
                           <Text style={s.h3}>
@@ -264,27 +292,34 @@ function MealsContent() {
                           </Text>
                           {d.date === today && <Pill>Heute</Pill>}
                         </View>
-                        {[
-                          { label: "Frühstück", value: d.breakfast, icon: Coffee },
-                          { label: "Mittagessen", value: d.lunch, icon: Sun },
-                          { label: "Abendessen", value: d.dinner, icon: Utensils },
-                        ].map((m) => (
-                          <View
-                            key={m.label}
-                            style={[s.row, { paddingVertical: 10 }]}
-                          >
-                            <m.icon size={16} color="#BA8C9E" />
-                            <View style={{ flex: 1 }}>
-                              <Text style={s.micro}>{m.label}</Text>
-                              <Text style={[s.body, { marginTop: 4 }]}>
-                                {m.value}
-                              </Text>
+                        {d.meals.map((m) => {
+                          const SlotIcon = m.slot === "breakfast" ? Coffee : m.slot === "lunch" ? Sun : Utensils;
+                          return (
+                            <View key={m.slot} style={[s.row, { paddingVertical: 10 }]}>
+                              <SlotIcon size={16} color="#BA8C9E" />
+                              <View style={{ flex: 1 }}>
+                                <View style={s.row}>
+                                  <Text style={s.micro}>{slotLabel[m.slot]}</Text>
+                                  {m.changed && (
+                                    <Text style={[s.micro, { color: C.green }]}>{m.current ? "· geändert" : "· gestrichen"}</Text>
+                                  )}
+                                </View>
+                                <Text
+                                  style={[
+                                    s.body,
+                                    { marginTop: 4 },
+                                    !m.current && { color: C.muted, textDecorationLine: "line-through" },
+                                  ]}
+                                >
+                                  {m.current || m.original}
+                                </Text>
+                              </View>
                             </View>
-                          </View>
-                        ))}
+                          );
+                        })}
                       </View>
                     ))
-                  : plan.groceries.map((g, i) => {
+                  : (grocery?.items || []).map((g, i) => {
                       const key = plan.weekStart + ":" + i + ":" + g.name;
                       return (
                         <Pressable
@@ -435,7 +470,7 @@ function CloudSettings() {
     <View style={[s.card, { padding: 26, gap: 14 }, pending && { borderColor: C.green }]}>
       <View style={s.row}>
         <Cloud size={20} color={C.green} />
-        <Heading>Cloud-Backup</Heading>
+        <Heading>Sync & Backup</Heading>
       </View>
       {pending ? (
         <>
@@ -460,13 +495,13 @@ function CloudSettings() {
         <>
           <Text style={[s.body, { color: C.muted, lineHeight: 22 }]}>
             {state.cloudLinked
-              ? "Hap sichert deine Daten automatisch in deinem Netlify-Speicher. Auf einem neuen Gerät oder in der App vom Home-Bildschirm holst du sie mit deinem App-Zugang zurück."
+              ? "Hap synchronisiert deine Daten automatisch zwischen deinen Geräten (Handy, Laptop, App vom Home-Bildschirm). Änderungen von beiden Seiten werden zusammengeführt."
               : "Hap prüft gerade, ob es schon eine Sicherung gibt …"}
           </Text>
-          {cloud.savedAt ? <Text style={s.micro}>Zuletzt gesichert: {when(cloud.savedAt)}</Text> : null}
+          {cloud.savedAt ? <Text style={s.micro}>Zuletzt synchronisiert: {when(cloud.savedAt)}</Text> : null}
           {state.cloudLinked && (
             <Pressable onPress={() => void checkCloud()}>
-              <Text style={s.link}>Sicherung aus der Cloud laden</Text>
+              <Text style={s.link}>Jetzt synchronisieren</Text>
             </Pressable>
           )}
         </>

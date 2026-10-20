@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { router } from "expo-router";
 import Animated, {
   useAnimatedStyle,
@@ -14,14 +14,17 @@ import {
   Brain,
   CalendarClock,
   CalendarDays,
+  Check,
   CheckCheck,
   Dumbbell,
   Flag,
   LayoutList,
+  Mic,
   Play,
   Rows3,
   Send,
   Sparkles,
+  Wand,
 } from "lucide-react-native";
 import {
   categories,
@@ -37,6 +40,7 @@ import {
 } from "@/lib/planner";
 import { nextUp } from "@/lib/agenda";
 import { parseQuick } from "@/lib/quickadd";
+import { listen, smartParse, speechAvailable, type SmartTask } from "@/lib/smartadd";
 import { clock, examKinds, focusPick, hoursLabel, studyStreak, suggestBlock, upcomingExams } from "@/lib/study";
 import { loggedOn, workoutsFor } from "@/lib/training";
 import { usePlanner } from "@/lib/store";
@@ -45,7 +49,8 @@ import { Bar } from "./charts";
 import { DayTimeline, useNow } from "./day-timeline";
 import { InstallCard } from "./install-card";
 import { DueTodos } from "./todos";
-import { Button, C, Pill, Shell, TaskList, useToday, WeekStrip, s } from "./planner-ui";
+import { WeekPlanCard } from "./week-plan";
+import { Button, C, Pill, Sheet, Shell, TaskList, useToday, WeekStrip, s } from "./planner-ui";
 
 function Pulse({ color }: { color: string }) {
   const v = useSharedValue(1);
@@ -285,48 +290,115 @@ function QuickActions() {
 }
 
 export function QuickAdd({ day }: { day: string }) {
-  const { update } = usePlanner();
+  const { state, update } = usePlanner();
   const today = useToday();
   const [text, setText] = useState("");
   const [flash, setFlash] = useState("");
+  const [problem, setProblem] = useState("");
+  const [thinking, setThinking] = useState(false);
+  const [proposal, setProposal] = useState<(SmartTask & { on: boolean })[] | null>(null);
+  const [listening, setListening] = useState<null | (() => void)>(null);
   const draft = text.trim() ? parseQuick(text, day === today ? today : day) : null;
+  // Longer sentences with several steps go to the AI; short ones stay local.
+  const complex = /\b(danach|dann|nach der|nach dem|vor der|vor dem|und dann|anschließend)\b|,/i.test(text) || text.trim().split(/\s+/).length > 9;
+  function done(message: string) {
+    setFlash(message);
+    setText("");
+    setTimeout(() => setFlash(""), 3500);
+  }
   function add() {
+    if (complex && state.accessToken) return void ask();
     if (!draft) return;
     tap("success");
     update((prev) => ({
       ...prev,
       tasks: [...prev.tasks, { ...draft, id: newId("task"), note: "", skipped: [] }],
     }));
-    setFlash("„" + draft.title + "“ eingeplant für " + parseDate(draft.date).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" }) + " um " + draft.time);
-    setText("");
-    setTimeout(() => setFlash(""), 3500);
+    done("„" + draft.title + "“ eingeplant für " + parseDate(draft.date).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" }) + " um " + draft.time);
+  }
+  async function ask() {
+    if (!text.trim() || thinking) return;
+    setThinking(true);
+    setProblem("");
+    const result = await smartParse(state, text.trim());
+    setThinking(false);
+    if (typeof result === "string") return setProblem(result);
+    tap("success");
+    setProposal(result.map((t) => ({ ...t, on: true })));
+  }
+  function accept() {
+    const chosen = (proposal || []).filter((t) => t.on);
+    tap("success");
+    update((prev) => ({
+      ...prev,
+      tasks: [
+        ...prev.tasks,
+        ...chosen.map(({ on: _on, ...t }) => ({
+          ...t,
+          id: newId("task"),
+          note: "",
+          skipped: [],
+          icon: categories[t.category].icon,
+        })),
+      ],
+    }));
+    setProposal(null);
+    done(chosen.length + (chosen.length === 1 ? " Aufgabe" : " Aufgaben") + " eingeplant");
+  }
+  function mic() {
+    if (listening) {
+      listening();
+      setListening(null);
+      return;
+    }
+    tap("medium");
+    const stop = listen(
+      (t) => setText(t),
+      () => setListening(null),
+    );
+    setListening(() => stop);
   }
   const cat = draft ? categories[draft.category] : null;
+  const ready = !!draft || (complex && !!state.accessToken);
   return (
     <View style={[s.card, { padding: 14, marginBottom: 18 }]}>
-      <View style={[s.row, { gap: 10 }]}>
+      <View style={[s.row, { gap: 8 }]}>
         <Sparkles size={18} color={C.green} />
         <TextInput
           value={text}
           onChangeText={setText}
           onSubmitEditing={add}
           returnKeyType="done"
-          placeholder="Was steht an? z. B. „morgen 10 uhr DB lernen 2h“"
+          placeholder="Was steht an? z. B. „nach der Vorlesung 2h DB lernen, danach Gym“"
           placeholderTextColor="#7E7887"
           accessibilityLabel="Schnelleingabe"
           style={{ flex: 1, color: C.ink, fontSize: 16, paddingVertical: 8, minHeight: 40 }}
         />
+        {speechAvailable() && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={listening ? "Diktat beenden" : "Per Sprache eingeben"}
+            onPress={mic}
+            style={{ backgroundColor: listening ? "#FF5A6A" : "#2A2B31", width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
+          >
+            <Mic size={16} color="white" />
+          </Pressable>
+        )}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Eintragen"
-          disabled={!draft}
+          accessibilityLabel={complex ? "Mit KI planen" : "Eintragen"}
+          disabled={!ready || thinking}
           onPress={add}
-          style={{ backgroundColor: draft ? C.button : "#2A2B31", width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
+          style={{ backgroundColor: ready ? C.button : "#2A2B31", width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
         >
-          <Send size={16} color="white" />
+          {thinking ? <ActivityIndicator color="white" size="small" /> : complex ? <Wand size={16} color="white" /> : <Send size={16} color="white" />}
         </Pressable>
       </View>
-      {draft && cat && (
+      {complex && text.trim() ? (
+        <Text style={[s.micro, { marginTop: 8 }]}>
+          {state.accessToken ? "✨ Die KI plant das passend zu deinem Kalender – tippe auf den Zauberstab." : "Für längere Sätze braucht die KI deinen App-Zugang (Einstellungen)."}
+        </Text>
+      ) : draft && cat ? (
         <Animated.View entering={FadeInDown.duration(200)} style={[s.wrap, { marginTop: 10, gap: 6 }]}>
           <Pill color={cat.color} bg={cat.pale}>{cat.label}</Pill>
           <Pill>{parseDate(draft.date).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" })}</Pill>
@@ -335,8 +407,43 @@ export function QuickAdd({ day }: { day: string }) {
           {draft.repeat !== "none" && <Pill>{repeats[draft.repeat]}</Pill>}
           <Text style={[s.micro, { alignSelf: "center" }]}>→ {draft.title}</Text>
         </Animated.View>
-      )}
+      ) : null}
       {flash ? <Text style={[s.micro, { color: "#98C5A9", marginTop: 8 }]}>✓ {flash}</Text> : null}
+      {problem ? <Text style={[s.micro, { color: "#F2A0A5", marginTop: 8 }]}>{problem}</Text> : null}
+      {proposal && (
+        <Sheet
+          title="So würde Hap das planen"
+          subtitle="Hak ab, was du übernehmen willst."
+          close={() => setProposal(null)}
+          footer={
+            <>
+              <Button quiet onPress={() => setProposal(null)}>Abbrechen</Button>
+              <Button icon={Check} disabled={!proposal.some((t) => t.on)} onPress={accept}>Einplanen</Button>
+            </>
+          }
+        >
+          {proposal.map((t, i) => (
+            <Pressable
+              key={i}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: t.on }}
+              onPress={() => setProposal(proposal.map((x, j) => (j === i ? { ...x, on: !x.on } : x)))}
+              style={[s.row, { padding: 12, borderRadius: 12, backgroundColor: "#22232A", gap: 12 }]}
+            >
+              <View style={[s.checkbox, t.on && { backgroundColor: C.button, borderColor: C.button }]}>
+                {t.on && <Check size={14} color="white" strokeWidth={3} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.h3}>{t.title}</Text>
+                <Text style={[s.micro, { marginTop: 3 }]}>
+                  {parseDate(t.date).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" })} · {t.time} · {hoursLabel(t.duration)} · {categories[t.category].label}
+                  {t.repeat !== "none" ? " · " + repeats[t.repeat] : ""}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </Sheet>
+      )}
     </View>
   );
 }
@@ -458,6 +565,7 @@ function TodayContent() {
       <View style={{ flex: 1, minWidth: 0 }}>
         <NowCard />
         <QuickActions />
+        <WeekPlanCard />
         <DueTodos />
         <InstallCard />
         <QuickAdd day={day} />

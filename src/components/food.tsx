@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
-import { Camera, Check, ImagePlus, PenLine, Sparkles, Trash2, User, X } from "lucide-react-native";
+import { Camera, Check, ImagePlus, PenLine, ScanBarcode, Sparkles, Trash2, User, X } from "lucide-react-native";
 import { localStamp, newId, type FoodEntry } from "@/lib/planner";
 import { foodTotals, pickPhoto, scanFood, type FoodEstimate } from "@/lib/food";
 import { goals, nutrition, workoutsFor } from "@/lib/training";
@@ -11,6 +11,7 @@ import { tap } from "@/lib/notify";
 import { Bar } from "./charts";
 import { Button, C, Field, Pill, Sheet, s, useToday } from "./planner-ui";
 import { ProfileSheet } from "./planner-meals";
+import { BarcodeSheet } from "./barcode";
 
 const macros = [
   { key: "protein", label: "Protein", color: "#E5B073" },
@@ -182,6 +183,7 @@ export function FoodTracker() {
   const [describe, setDescribe] = useState("");
   const [writing, setWriting] = useState(false);
   const [profile, setProfile] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const training = workoutsFor(state, today).length > 0;
   const target = nutrition(state.profile, training);
   const totals = foodTotals(state, today);
@@ -239,14 +241,18 @@ export function FoodTracker() {
         </View>
       </View>
 
-      <View style={[s.row, { gap: 10 }]}>
-        <Pressable accessibilityRole="button" disabled={!!busy} onPress={() => void photo("camera")} style={({ pressed }) => [st.action, { backgroundColor: C.button, flex: 1.4, opacity: pressed || busy ? 0.75 : 1 }]}>
+      <View style={[s.row, { gap: 8 }]}>
+        <Pressable accessibilityRole="button" disabled={!!busy} onPress={() => void photo("camera")} style={({ pressed }) => [st.action, { backgroundColor: C.button, opacity: pressed || busy ? 0.75 : 1 }]}>
           <Camera size={20} color="white" />
           <Text style={st.actionText}>Foto</Text>
         </Pressable>
         <Pressable accessibilityRole="button" disabled={!!busy} onPress={() => void photo("library")} style={({ pressed }) => [st.action, { opacity: pressed || busy ? 0.75 : 1 }]}>
           <ImagePlus size={19} color={C.ink} />
           <Text style={[st.actionText, { color: C.ink }]}>Galerie</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" disabled={!!busy} onPress={() => setScanning(true)} style={({ pressed }) => [st.action, { opacity: pressed || busy ? 0.75 : 1 }]}>
+          <ScanBarcode size={19} color={C.ink} />
+          <Text style={[st.actionText, { color: C.ink }]}>Barcode</Text>
         </Pressable>
         <Pressable accessibilityRole="button" disabled={!!busy} onPress={() => setWriting(!writing)} style={({ pressed }) => [st.action, { opacity: pressed || busy ? 0.75 : 1 }, writing && { borderColor: C.green }]}>
           <PenLine size={19} color={C.ink} />
@@ -353,6 +359,7 @@ export function FoodTracker() {
         />
       )}
       {profile && <ProfileSheet close={() => setProfile(false)} />}
+      {scanning && <BarcodeSheet close={() => setScanning(false)} />}
     </View>
   );
 }
@@ -360,15 +367,14 @@ export function FoodTracker() {
 const st = StyleSheet.create({
   action: {
     flex: 1,
-    height: 56,
+    height: 64,
     borderRadius: 14,
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 5,
     backgroundColor: "#22232A",
     borderWidth: 1,
     borderColor: C.line,
   },
-  actionText: { color: "white", fontWeight: "700", fontSize: 14 },
+  actionText: { color: "white", fontWeight: "700", fontSize: 13 },
 });

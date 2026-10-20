@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { CalendarPlus, ChevronDown, ChevronRight, RefreshCw, Trash2 } from "lucide-react-native";
+import { CalendarPlus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2 } from "lucide-react-native";
 import { dateKey, newId } from "@/lib/planner";
 import { normalizeCalendarUrl } from "@/lib/ics";
 import { usePlanner } from "@/lib/store";
@@ -17,6 +17,7 @@ const leads = [
 ] as const;
 
 const help = [
+  ["Moodle (Abgaben)", "Moodle → Kalender → „Kalender importieren oder exportieren“ → „Kalender exportieren“ → Ereignisse: Alle, Zeitraum: kürzlich und nächste 60 Tage → „Kalender-URL abrufen“ → kopieren. Danach beim Abo „Als To-dos übernehmen“ einschalten."],
   ["iPhone / iCloud", "Kalender-App → „Kalender“ → ⓘ neben dem Kalender → „Öffentlicher Kalender“ einschalten → „Link teilen“ → kopieren. Tipp: eigenen Kalender „Reisen“ anlegen und im DB Navigator „In Kalender übernehmen“ wählen."],
   ["Google", "calendar.google.com → Einstellungen → Kalender auswählen → „Privatadresse im iCal-Format“ kopieren."],
   ["Outlook", "Einstellungen → Kalender → Freigegebene Kalender → „Kalender veröffentlichen“ → ICS-Link kopieren."],
@@ -93,6 +94,21 @@ export function CalendarSettings() {
                 />
               ))}
             </View>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: !!cal.asTodos }}
+              onPress={() => {
+                update((prev) => ({ ...prev, calendars: prev.calendars.map((c) => (c.id === cal.id ? { ...c, asTodos: !c.asTodos } : c)) }));
+                // Create the to-dos right away instead of at the next refresh.
+                if (!cal.asTodos) setTimeout(() => void syncCalendars({ ...cal, asTodos: true }), 50);
+              }}
+              style={s.row}
+            >
+              <View style={[s.checkbox, { width: 18, height: 18 }, cal.asTodos && { backgroundColor: cal.color, borderColor: cal.color }]}>
+                {cal.asTodos && <Check size={12} color="#121316" strokeWidth={3} />}
+              </View>
+              <Text style={[s.micro, { flex: 1 }]}>Als To-dos übernehmen (z. B. Moodle-Abgaben, Erinnerung 1 Tag vorher)</Text>
+            </Pressable>
             {confirm === cal.id && (
               <Button
                 quiet

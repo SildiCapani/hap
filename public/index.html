@@ -14,6 +14,16 @@
     <meta name="apple-mobile-web-app-title" content="Hap" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <script>
+      // Undo the scroll iOS applies for the keyboard once it closes.
+      window.addEventListener("focusout", function () {
+        setTimeout(function () {
+          if (window.scrollY) window.scrollTo(0, 0);
+        }, 60);
+      });
+      if (window.visualViewport)
+        window.visualViewport.addEventListener("resize", function () {
+          if (window.visualViewport.height >= window.innerHeight - 1 && window.scrollY) window.scrollTo(0, 0);
+        });
       if ("serviceWorker" in navigator)
         window.addEventListener("load", function () {
           navigator.serviceWorker.register("/sw.js").catch(function () {});
@@ -39,13 +49,16 @@
         height: 100%;
         flex: 1;
       }
-      /* On iOS home screen apps "100%" leaves a gap below the tab bar;
-         the dynamic viewport height covers the whole screen. */
-      @supports (height: 100dvh) {
-        html,
-        body {
-          height: 100dvh;
-        }
+      /* iOS home screen apps: after the keyboard closes, Safari can leave the
+         page scrolled or shrunk, so the tab bar moves up. Pinning the body to
+         the screen edges keeps the layout at full height. */
+      body {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: auto;
       }
     </style>
   </head>

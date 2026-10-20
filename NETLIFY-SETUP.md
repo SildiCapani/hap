@@ -110,11 +110,34 @@ geschätzte kcal, Protein, Kohlenhydrate und Fett zurück. Fotos werden nicht
 gespeichert (`store: false`). Ein Tageslimit von 40 Analysen schützt vor
 unerwarteten Kosten. Mit `gpt-6-luna` kostet ein Foto rund 0,05 Cent.
 
-## Cloud-Backup
+## Sync zwischen Geräten
 
-Mit dem App-Zugang sichert Hap alle Daten automatisch in Netlify Blobs
-(`hap-backup`). Auf einem neuen Gerät fragt Hap, ob die Cloud-Daten übernommen
-werden sollen – ein frisches Gerät überschreibt die Sicherung nie ungefragt.
+Mit dem App-Zugang synchronisiert Hap alle Daten über Netlify Blobs
+(`hap-backup`): nach jeder Änderung, alle 2 Minuten und beim Öffnen. Jedes Gerät
+merkt sich den zuletzt synchronisierten Stand; Änderungen von Handy und Laptop
+werden zusammengeführt (neue, erledigte und gelöschte Einträge von beiden
+Seiten bleiben erhalten; ändern beide denselben Eintrag, gewinnt das Gerät, das
+gerade synchronisiert). Ein Gerät schreibt nur, wenn es den neuesten Stand
+kennt, sonst führt es erst zusammen. Nicht synchronisiert werden: App-Zugang,
+Benachrichtigungs-Einstellungen, laufende Fokusrunde/Training und die
+Kalender-Feeds (die lädt jedes Gerät selbst). Auf einem neuen Gerät fragt Hap,
+ob die Cloud-Daten übernommen werden sollen.
+
+## Weitere KI-Funktionen (alle mit Tageslimit)
+
+- `groceries`: Einkaufsliste nach geänderten Gerichten neu berechnen (15/Tag).
+- `module-scan`: Module aus Screenshot, PDF (max. ca. 3 MB) oder Text lesen und
+  Lernstunden vorschlagen (10/Tag).
+- `plan-parse`: Freitext wie „nach der Vorlesung 2 h lernen, danach Gym“ mit
+  Blick auf den Kalender der nächsten 7 Tage in Aufgaben umwandeln (60/Tag).
+
+Barcodes werden direkt bei Open Food Facts nachgeschlagen (kostenlos, ohne Netlify).
+
+## Offline
+
+Der Service Worker speichert die App-Dateien, damit Hap auch ohne Netz startet.
+Die Seite selbst wird immer zuerst aus dem Netz geladen, ein neues Deployment
+ist also sofort sichtbar. Daten-Abrufe (`/.netlify/…`) werden nie zwischengespeichert.
 
 ## Benachrichtigungen
 

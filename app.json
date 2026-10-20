@@ -50,6 +50,14 @@
           "cameraPermission": "Hap nutzt die Kamera, um die Kalorien deiner Mahlzeiten zu schätzen.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Hap nutzt die Kamera, um Barcodes von Lebensmitteln zu scannen.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {

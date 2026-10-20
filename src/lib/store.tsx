@@ -12,6 +12,8 @@ import { AppState, Platform } from "react-native";
 import {
   createState,
   dateKey,
+  localStamp,
+  newId,
   finishFocus,
   importMeals,
   monday,
@@ -25,6 +27,7 @@ import {
 import { parseRapla, raplaWeeksUrl, type UniEvent } from "./rapla";
 import { normalizeCalendarUrl, parseIcs, type CalEvent } from "./ics";
 import { reminders } from "./reminders";
+import { applySynced, merge3, sameData, subset, type Synced } from "./sync";
 import { schedule } from "./notify";
 import { currentSubscription, syncWebPush } from "./webpush";
 import { profileText } from "./training";
@@ -68,11 +71,12 @@ type Store = {
   uniStatus: string;
   pushProfile: () => Promise<string>;
   generateMeals: () => Promise<string>;
-  cloud: { savedAt: string; pending: { state: PlannerState; savedAt: string } | null };
+  cloud: { savedAt: string; pending: { state: PlannerState; savedAt: string; rev: string } | null };
   checkCloud: () => Promise<void>;
   resolveCloud: (useCloud: boolean) => void;
 };
 const Context = createContext<Store | null>(null);
+const syncKey = "hap.sync.v1";
 export function PlannerProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PlannerState>(() => createState());
   const [ready, setReady] = useState(false);
@@ -374,15 +378,40 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       }
       update((prev) => {
         const fresh = results.filter((r) => r.events && prev.calendars.some((c) => c.id === r.id));
+        // Deadline calendars (e.g. Moodle) also create to-dos, once per event.
+        const todos = [...prev.todos];
+        const imported: Record<string, string[]> = {};
+        for (const r of fresh) {
+          const cal = prev.calendars.find((c) => c.id === r.id);
+          if (!cal?.asTodos) continue;
+          const done = new Set(cal.imported || []);
+          for (const e of r.events || []) {
+            const base = e.id.replace(/:\d+$/, "");
+            if (done.has(base) || e.date < dateKey()) continue;
+            done.add(base);
+            todos.push({
+              id: newId("todo"),
+              title: e.title.replace(/\s+(ist )?fällig\.?$/i, "").replace(/^Fällig:\s*/i, "").slice(0, 160),
+              due: e.date + "T" + (e.allDay ? "23:59" : e.start),
+              remind: { mode: "before", at: "", time: "09:00", weekday: 1, hours: 3, before: 1440 },
+              createdAt: localStamp(),
+              doneAt: null,
+            });
+          }
+          imported[cal.id] = [...done].slice(-1000);
+        }
         return {
           ...prev,
+          todos,
           calEvents: [
             ...prev.calEvents.filter((e) => !fresh.some((r) => r.id === e.calId) && prev.calendars.some((c) => c.id === e.calId)),
             ...fresh.flatMap((r) => r.events || []),
           ],
           calendars: prev.calendars.map((c) => {
             const r = results.find((x) => x.id === c.id);
-            return r ? { ...c, error: r.error, syncedAt: r.events ? new Date().toISOString() : c.syncedAt } : c;
+            return r
+              ? { ...c, error: r.error, syncedAt: r.events ? new Date().toISOString() : c.syncedAt, imported: imported[c.id] || c.imported }
+              : c;
           }),
         };
       });
@@ -492,10 +521,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     }
   }, [state]);
   const [cloud, setCloud] = useState<Store["cloud"]>({ savedAt: "", pending: null });
-  const base = state.apiUrl.replace(/\/$/, "");
+  const apiBase = state.apiUrl.replace(/\/$/, "");
   const generateMeals = useCallback(async () => {
     if (!state.accessToken) return "Trag zuerst deinen persönlichen App-Zugang ein.";
-    const response = await fetch(base + "/.netlify/functions/meal-generate", {
+    const response = await fetch(apiBase + "/.netlify/functions/meal-generate", {
       method: "POST",
       headers: { Authorization: "Bearer " + state.accessToken },
       signal: AbortSignal.timeout(20000),
@@ -512,10 +541,75 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     // The plan is ready after one to three minutes; check every 20 seconds.
     for (let i = 1; i <= 12; i++) setTimeout(() => void syncMeals(), i * 20000);
     return "Die KI erstellt deinen Plan. Das dauert 1–3 Minuten, Hap lädt ihn automatisch.";
-  }, [base, state.accessToken, syncMeals]);
+  }, [apiBase, state.accessToken, syncMeals]);
+  // Sync between devices: every device keeps the last synced copy ("base").
+  // Changes on both sides are merged against it (see sync.ts), then uploaded
+  // only if nobody else wrote in between.
+  const syncBase = useRef<{ rev: string; data: Synced | null } | null>(null);
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  }, [state]);
+  useEffect(() => {
+    void AsyncStorage.getItem(syncKey)
+      .then((raw) => {
+        if (raw) syncBase.current = JSON.parse(raw);
+      })
+      .catch(() => {});
+  }, []);
+  const remember = useCallback((rev: string, data: Synced, savedAt: string) => {
+    syncBase.current = { rev, data };
+    setCloud((c) => ({ ...c, savedAt }));
+    void AsyncStorage.setItem(syncKey, JSON.stringify(syncBase.current)).catch(() => {});
+  }, []);
+  const cloudBusy = useRef(false);
+  const syncNow = useCallback(async () => {
+    const token = latest.current.accessToken;
+    if (!ready || !token || !latest.current.cloudLinked || cloudBusy.current) return;
+    cloudBusy.current = true;
+    const url = apiBase + "/.netlify/functions/backup";
+    const headers = { Authorization: "Bearer " + token, "Content-Type": "application/json" };
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
+        if (response.status !== 404 && !response.ok) return;
+        const remote = response.status === 404 ? null : ((await response.json()) as { state: PlannerState; rev: string; savedAt: string });
+        const local = subset(latest.current);
+        let merged = local;
+        if (remote && remote.rev !== syncBase.current?.rev) {
+          merged = merge3(syncBase.current?.data ?? null, local, subset(remote.state));
+          // A merge result that is not valid data must never replace local state.
+          readState(JSON.stringify(applySynced(latest.current, merged)));
+          if (!sameData(merged, local)) {
+            const result = merged;
+            // Keep edits made while the request was running.
+            update((prev) => applySynced(prev, merge3(local, subset(prev), result)));
+          }
+        }
+        if (remote && sameData(merged, subset(remote.state))) return remember(remote.rev, merged, remote.savedAt);
+        const put = await fetch(url, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ state: merged, baseRev: remote?.rev ?? "" }),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (put.status === 409) continue;
+        if (put.ok) {
+          const saved = (await put.json()) as { rev: string; savedAt: string };
+          remember(saved.rev, merged, saved.savedAt);
+        }
+        return;
+      }
+    } catch {
+      // Offline or invalid data: the next attempt starts from the same base.
+    } finally {
+      cloudBusy.current = false;
+    }
+  }, [ready, apiBase, update, remember]);
   const checkCloud = useCallback(async () => {
     if (!ready || !state.accessToken) return;
-    const response = await fetch(base + "/.netlify/functions/backup", {
+    if (state.cloudLinked) return void syncNow();
+    const response = await fetch(apiBase + "/.netlify/functions/backup", {
       headers: { Authorization: "Bearer " + state.accessToken },
       signal: AbortSignal.timeout(20000),
     }).catch(() => null);
@@ -525,27 +619,27 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!response.ok) return;
-    const backup = (await response.json()) as { state: PlannerState; savedAt: string };
+    const backup = (await response.json()) as { state: PlannerState; savedAt: string; rev: string };
     try {
       const restored = readState(JSON.stringify(backup.state));
-      setCloud({ savedAt: backup.savedAt, pending: { state: restored, savedAt: backup.savedAt } });
+      setCloud({ savedAt: backup.savedAt, pending: { state: restored, savedAt: backup.savedAt, rev: backup.rev } });
     } catch {
       // A broken cloud copy must never replace local data.
     }
-  }, [ready, base, state.accessToken, update]);
+  }, [ready, apiBase, state.accessToken, state.cloudLinked, update, syncNow]);
   const resolveCloud = useCallback(
     (useCloud: boolean) => {
       const pending = cloud.pending;
-      update((prev) =>
-        useCloud && pending
-          ? { ...pending.state, accessToken: prev.accessToken, apiUrl: prev.apiUrl, cloudLinked: true }
-          : { ...prev, cloudLinked: true },
-      );
+      if (!pending) return;
+      // Either way the cloud copy becomes the base: taking it changes nothing,
+      // keeping this device uploads it over the cloud on the next sync.
+      remember(pending.rev, subset(pending.state), pending.savedAt);
+      update((prev) => ({ ...(useCloud ? applySynced(prev, subset(pending.state)) : prev), cloudLinked: true }));
       setCloud((c) => ({ ...c, pending: null }));
     },
-    [cloud.pending, update],
+    [cloud.pending, update, remember],
   );
-  // A device only uploads after it was linked, so a fresh install can never
+  // A device only syncs after it was linked, so a fresh install can never
   // overwrite the real data in the cloud before the user decides.
   useEffect(() => {
     if (!ready || !state.accessToken || state.cloudLinked) return;
@@ -554,21 +648,25 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   }, [ready, state.accessToken, state.cloudLinked, checkCloud]);
   useEffect(() => {
     if (!ready || !state.accessToken || !state.cloudLinked) return;
-    const timer = setTimeout(() => {
-      void fetch(base + "/.netlify/functions/backup", {
-        method: "PUT",
-        headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
-        body: JSON.stringify({ state: { ...state, accessToken: "" } }),
-        signal: AbortSignal.timeout(20000),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((r: { savedAt?: string } | null) => {
-          if (r?.savedAt) setCloud((c) => ({ ...c, savedAt: r.savedAt as string }));
-        })
-        .catch(() => {});
-    }, 8000);
+    if (syncBase.current && sameData(subset(state), syncBase.current.data)) return;
+    const timer = setTimeout(() => void syncNow(), 4000);
     return () => clearTimeout(timer);
-  }, [ready, state, base]);
+  }, [ready, state, syncNow]);
+  // Pick up changes from other devices while Hap is open or comes back.
+  useEffect(() => {
+    if (!ready || !state.accessToken || !state.cloudLinked) return;
+    const timer = setInterval(() => void syncNow(), 2 * 60 * 1000);
+    const subscription = AppState.addEventListener("change", (value) => {
+      if (value === "active") void syncNow();
+    });
+    const focus = () => void syncNow();
+    if (Platform.OS === "web") window.addEventListener("focus", focus);
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+      if (Platform.OS === "web") window.removeEventListener("focus", focus);
+    };
+  }, [ready, state.accessToken, state.cloudLinked, syncNow]);
   // Keep the meal planning profile on Netlify in sync with goals and training days.
   const profileKey = ready && state.accessToken ? profileText(state) : "";
   const sentProfile = useRef("");

@@ -58,3 +58,58 @@ export function foodTotals(state: PlannerState, day: string) {
   // Protein counted with the old quick buttons still counts.
   return { entries, kcal: sum("kcal"), protein: sum("protein") + (state.protein[day] || 0), carbs: sum("carbs"), fat: sum("fat") };
 }
+
+export type Product = {
+  code: string;
+  name: string;
+  brand: string;
+  per100: { kcal: number; protein: number; carbs: number; fat: number };
+  serving: number; // grams, 0 if unknown
+  pack: number; // grams of the whole package, 0 if unknown
+};
+
+const num = (v: unknown) => (typeof v === "number" ? v : Number(String(v ?? "").replace(",", "."))) || 0;
+
+// Exact values for packaged food from Open Food Facts (free, no key).
+export async function lookupBarcode(code: string): Promise<Product | string> {
+  const clean = code.replace(/\D/g, "");
+  if (clean.length < 8 || clean.length > 14) return "Das ist kein gültiger Barcode (8–14 Ziffern).";
+  const response = await fetch(
+    "https://world.openfoodfacts.org/api/v2/product/" +
+      clean +
+      ".json?fields=product_name,product_name_de,brands,nutriments,serving_quantity,product_quantity",
+    { signal: AbortSignal.timeout(15000) },
+  ).catch(() => null);
+  if (!response) return "Open Food Facts ist gerade nicht erreichbar.";
+  if (response.status === 404) return "Dieses Produkt kennt Open Food Facts noch nicht. Trag es per Foto oder Text ein.";
+  if (!response.ok) return "Open Food Facts antwortet gerade nicht (" + response.status + ").";
+  const data = (await response.json()) as { status: number; product?: Record<string, unknown> };
+  const p = data.product;
+  if (data.status !== 1 || !p) return "Dieses Produkt kennt Open Food Facts noch nicht. Trag es per Foto oder Text ein.";
+  const n = (p.nutriments || {}) as Record<string, unknown>;
+  const kcal = num(n["energy-kcal_100g"]) || num(n["energy_100g"]) / 4.184;
+  if (!kcal && !num(n.proteins_100g)) return "Für dieses Produkt fehlen die Nährwerte. Trag es per Foto oder Text ein.";
+  return {
+    code: clean,
+    name: String(p.product_name_de || p.product_name || "Produkt").slice(0, 80),
+    brand: String(p.brands || "").split(",")[0].trim().slice(0, 40),
+    per100: {
+      kcal: Math.round(kcal),
+      protein: Math.round(num(n.proteins_100g) * 10) / 10,
+      carbs: Math.round(num(n.carbohydrates_100g) * 10) / 10,
+      fat: Math.round(num(n.fat_100g) * 10) / 10,
+    },
+    serving: Math.round(num(p.serving_quantity)),
+    pack: Math.round(num(p.product_quantity)),
+  };
+}
+
+export function portion(product: Product, grams: number) {
+  const f = grams / 100;
+  return {
+    kcal: Math.round(product.per100.kcal * f),
+    protein: Math.round(product.per100.protein * f),
+    carbs: Math.round(product.per100.carbs * f),
+    fat: Math.round(product.per100.fat * f),
+  };
+}

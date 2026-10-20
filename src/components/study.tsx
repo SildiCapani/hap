@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   AlarmClock,
   Brain,
+  CalendarCheck,
   CalendarPlus,
   Check,
+  FileText,
+  ImagePlus,
+  Sparkles,
   Flag,
   GraduationCap,
   Pencil,
@@ -35,6 +39,9 @@ import {
   type ExamStatus,
 } from "@/lib/study";
 import { usePlanner } from "@/lib/store";
+import { pickPhoto } from "@/lib/food";
+import { examKindFor, pickPdf, scanModules, type ModuleDraft } from "@/lib/modules";
+import { WeekPlanSheet } from "./week-plan";
 import { tap } from "@/lib/notify";
 import { Bar, Heatmap, TimePicture } from "./charts";
 import {
@@ -276,6 +283,139 @@ function ExamEditor({ exam, close }: { exam?: Exam; close: () => void }) {
   );
 }
 
+function ModuleImport({ close }: { close: () => void }) {
+  const { state, update } = usePlanner();
+  const today = useToday();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [rows, setRows] = useState<(ModuleDraft & { on: boolean; hoursText: string; dateText: string; exists: boolean })[] | null>(null);
+  const examWeek = state.uniEvents.find((e) => e.kind === "exam" && e.date >= today)?.date;
+  async function run(input: { text?: string; image?: string; pdf?: string }) {
+    setError("");
+    setBusy("KI liest deine Module …");
+    const result = await scanModules(state, input);
+    setBusy("");
+    if (typeof result === "string") return setError(result);
+    if (!result.length) return setError("Hap hat keine Module gefunden. Versuch einen anderen Ausschnitt.");
+    tap("success");
+    setRows(
+      result.map((m) => {
+        const exists = state.exams.some((e) => e.title.toLowerCase() === m.name.toLowerCase());
+        return { ...m, on: !exists, exists, hoursText: String(m.hours), dateText: m.date || examWeek || shiftDay(today, 30) };
+      }),
+    );
+  }
+  async function from(kind: "image" | "pdf") {
+    try {
+      const data = kind === "image" ? await pickPhoto("library") : await pickPdf();
+      if (data) await run(kind === "image" ? { image: data, text } : { pdf: data, text });
+    } catch (e) {
+      setBusy("");
+      setError(e instanceof Error ? e.message : "Die Datei konnte nicht geladen werden.");
+    }
+  }
+  const chosen = rows?.filter((r) => r.on) || [];
+  function create() {
+    const bad = chosen.find((r) => !validDate(r.dateText) || !(Number(r.hoursText) > 0));
+    if (bad) return setError("Bitte bei „" + bad.name + "“ ein Datum (JJJJ-MM-TT) und Stunden eintragen.");
+    tap("success");
+    update((prev) => ({
+      ...prev,
+      exams: [
+        ...prev.exams,
+        ...chosen.map((r) => ({
+          id: newId("exam"),
+          title: r.name,
+          kind: examKindFor(r.exam),
+          date: r.dateText,
+          time: "",
+          hours: Number(r.hoursText),
+          topics: r.topics.map((t) => ({ id: newId("topic"), title: t, done: false })),
+          note: (r.ects ? r.ects + " ECTS · " : "") + r.exam + (r.date ? "" : " · Datum vorläufig"),
+        })),
+      ],
+    }));
+    close();
+  }
+  return (
+    <Sheet
+      title="Module importieren"
+      subtitle="Screenshot der Moodle-Kursliste, Modulhandbuch (PDF) oder Text – die KI plant die Lernstunden."
+      close={close}
+      width={640}
+      footer={
+        rows ? (
+          <>
+            <Button quiet onPress={() => setRows(null)}>Zurück</Button>
+            <Button icon={Check} disabled={!chosen.length} onPress={create}>
+              {chosen.length} {chosen.length === 1 ? "Prüfung" : "Prüfungen"} anlegen
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+      {!rows ? (
+        <>
+          <View style={[s.row, { flexWrap: "wrap" }]}>
+            <Button icon={ImagePlus} disabled={!!busy} onPress={() => void from("image")}>Screenshot / Foto</Button>
+            <Button quiet icon={FileText} disabled={!!busy} onPress={() => void from("pdf")}>PDF</Button>
+          </View>
+          <Field
+            label="Oder Text einfügen (z. B. aus Moodle „Meine Kurse“ kopiert)"
+            value={text}
+            onChangeText={setText}
+            multiline
+            placeholder={"Verteilte Systeme (5 ECTS, Klausur)\nKünstliche Intelligenz …"}
+          />
+          <Button quiet icon={Sparkles} disabled={!!busy || !text.trim()} onPress={() => void run({ text })}>
+            Text auswerten
+          </Button>
+          {busy ? (
+            <View style={s.row}>
+              <ActivityIndicator color={C.green} />
+              <Text style={s.body}>{busy}</Text>
+            </View>
+          ) : null}
+          <Text style={[s.micro, { lineHeight: 17 }]}>
+            Kostet unter 1 Cent. Termine für Abgaben bekommst du automatisch, wenn du den Moodle-Kalender unter Einstellungen → Kalender-Abos einträgst.
+          </Text>
+        </>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {rows.map((r, i) => {
+            const set = (patch: Partial<typeof r>) => setRows(rows.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+            return (
+              <View key={r.name + i} style={{ gap: 8, padding: 12, borderRadius: 12, backgroundColor: r.on ? "#22232A" : "#1A1B20" }}>
+                <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: r.on }} onPress={() => set({ on: !r.on })} style={s.row}>
+                  <View style={[s.checkbox, r.on && { backgroundColor: C.button, borderColor: C.button }]}>
+                    {r.on && <Check size={14} color="white" strokeWidth={3} />}
+                  </View>
+                  <Text style={[s.h3, { flex: 1 }]}>{r.name}</Text>
+                  <Pill>{r.exam}</Pill>
+                </Pressable>
+                {r.exists && <Text style={s.micro}>Schon in deinen Prüfungen</Text>}
+                {r.on && (
+                  <View style={s.row}>
+                    <View style={{ flex: 1 }}>
+                      <Field label={"Lernstunden" + (r.ects ? " (" + r.ects + " ECTS)" : "")} value={r.hoursText} onChangeText={(v) => set({ hoursText: v })} keyboardType="numeric" maxLength={3} />
+                    </View>
+                    <View style={{ flex: 1.3 }}>
+                      <Field label={r.date ? "Prüfung am" : "Datum (vorläufig)"} value={r.dateText} onChangeText={(v) => set({ dateText: v })} maxLength={10} />
+                    </View>
+                  </View>
+                )}
+                {r.on && r.topics.length > 0 && <Text style={s.micro} numberOfLines={2}>Themen: {r.topics.join(", ")}</Text>}
+              </View>
+            );
+          })}
+        </View>
+      )}
+      {error ? <Text style={s.formError}>{error}</Text> : null}
+    </Sheet>
+  );
+}
+
 function TodayPlan() {
   const { state, update } = usePlanner();
   const today = useToday();
@@ -351,6 +491,8 @@ function StudyContent() {
   const today = useToday();
   const { width } = useWindowDimensions();
   const [editing, setEditing] = useState<Exam | "new" | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [weekPlan, setWeekPlan] = useState(false);
   const statuses = state.exams
     .map((e) => examStatus(state, e, today))
     .sort((a, b) => (a.days < 0 ? 1 : 0) - (b.days < 0 ? 1 : 0) || a.days - b.days);
@@ -385,6 +527,8 @@ function StudyContent() {
         <View style={{ gap: 10, justifyContent: "center" }}>
           <Button icon={Play} onPress={() => router.push("/focus" as "/")}>Fokus-Timer</Button>
           <Button quiet icon={Plus} onPress={() => setEditing("new")}>Prüfung / Abgabe</Button>
+          <Button quiet icon={Sparkles} onPress={() => setImporting(true)}>Module importieren</Button>
+          <Button quiet icon={CalendarCheck} onPress={() => setWeekPlan(true)}>Woche planen</Button>
         </View>
       </View>
 
@@ -484,6 +628,8 @@ function StudyContent() {
           </View>
         </View>
       </View>
+      {importing && <ModuleImport close={() => setImporting(false)} />}
+      {weekPlan && <WeekPlanSheet close={() => setWeekPlan(false)} />}
       {editing && <ExamEditor exam={editing === "new" ? undefined : editing} close={() => setEditing(null)} />}
     </>
   );

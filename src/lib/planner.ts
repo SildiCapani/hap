@@ -131,7 +131,7 @@ export type FoodEntry = {
   carbs: number;
   fat: number;
   items: { name: string; amount: string; kcal: number }[];
-  source: "photo" | "manual";
+  source: "photo" | "manual" | "barcode";
 };
 export type Calendar = {
   id: string;
@@ -141,6 +141,8 @@ export type Calendar = {
   lead: number; // reminder minutes before an event, 0 = none
   syncedAt: string;
   error: string;
+  asTodos?: boolean; // e.g. Moodle deadlines become to-dos
+  imported?: string[]; // events already turned into to-dos (also if deleted later)
 };
 export type Place = {
   id: string;
@@ -208,6 +210,8 @@ export type PlannerState = {
   calEvents: CalEvent[];
   places: Place[];
   transport: TransportSettings;
+  groceryList: { weekStart: string; basis: string; items: MealPlan["groceries"] } | null;
+  weekPlanned: string; // Monday of the last week planned with the Sunday review
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -263,6 +267,8 @@ const extras = (): Omit<
   calEvents: [],
   places: [],
   transport: { ...defaultTransport },
+  groceryList: null,
+  weekPlanned: "",
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {

@@ -130,9 +130,12 @@ export function clock(total: number) {
 }
 
 export function hoursLabel(mins: number) {
-  if (mins < 60) return mins + " Min.";
-  const h = mins / 60;
-  return (Number.isInteger(h) ? h : h.toFixed(1).replace(".", ",")) + " h";
+  const total = Math.round(mins);
+  if (total < 60) return total + " Min.";
+  const h = Math.floor(total / 60), m = total % 60;
+  if (!m) return h + " h";
+  if (m === 30) return h + ",5 h";
+  return h + " h " + m + " Min.";
 }
 
 export function focusByDay(state: PlannerState, today: string, count: number) {
