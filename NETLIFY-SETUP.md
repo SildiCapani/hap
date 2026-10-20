@@ -54,7 +54,7 @@ Links keinen iCal-Export, darum liest Hap die Wochenansicht (bis zu 20 Wochen ab
 zwei Wochen in der Vergangenheit) und erkennt Vorlesungen, Räume, Dozierende und
 die Klausurwoche. Die native App ruft Rapla direkt ab. Im Browser blockiert Rapla
 direkte Abrufe (CORS), deshalb läuft der Import dort über die Function
-`uni-calendar`, die ausschließlich Links von `rapla.dhbw.de` annimmt. Der Link
+`uni-calendar` (lokal stellt der Expo-Server sie bereit), die ausschließlich Links von `rapla.dhbw.de` annimmt. Der Link
 bleibt nur auf dem Gerät gespeichert und wird nicht in Netlify hinterlegt.
 Hap lädt den Plan alle 6 Stunden und bei der Rückkehr zur App neu.
 
@@ -119,6 +119,7 @@ Laden der Website ohne Internet ist noch nicht als Offline-PWA eingerichtet.
 - npm run web
 
 Die reine Expo-Vorschau enthält keine Netlify-Functions. Ohne eingerichtetes Netlify
-ist der Essensplan daher bewusst leer, und der Rapla-Import im Browser braucht
-`npx netlify dev` (in der nativen App funktioniert er direkt). Die Backend-Tests verwenden simulierte
+ist der Essensplan daher bewusst leer. Der Rapla-Import funktioniert trotzdem:
+`metro.config.js` stellt die Function `uni-calendar` auch auf dem lokalen
+Expo-Server bereit. Die Backend-Tests verwenden simulierte
 API-Antworten; ein echter KI-Aufruf erfordert die obigen Zugangsdaten.

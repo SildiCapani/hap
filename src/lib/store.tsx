@@ -27,6 +27,28 @@ import { schedule } from "./notify";
 import { currentSubscription, syncWebPush } from "./webpush";
 import { profileText } from "./training";
 
+function raplaProblem(
+  status: number,
+  data: { upstream?: number | string; detail?: string },
+) {
+  if (status === 400)
+    return "Der Link wurde abgelehnt. Bitte den vollständigen Link aus Rapla kopieren (beginnt mit https://rapla.dhbw.de/rapla/…).";
+  if (status === 422)
+    return (
+      "Rapla hat keinen Stundenplan geliefert" +
+      (data.detail ? " („" + data.detail + "“)" : "") +
+      ". Ist der Link noch gültig?"
+    );
+  if (data.upstream === "timeout")
+    return "Rapla hat nicht rechtzeitig geantwortet. Versuch es gleich nochmal.";
+  if (data.upstream === "network" || data.upstream === "redirect")
+    return "Der Server konnte Rapla nicht erreichen (" + data.upstream + "). Am Handy in der App klappt der Abruf direkt.";
+  return (
+    "Rapla hat die Anfrage abgelehnt (Status " +
+    (data.upstream ?? status) +
+    "). Prüfe deinen Link oder versuch es später nochmal."
+  );
+}
 type Store = {
   state: PlannerState;
   ready: boolean;
@@ -229,20 +251,28 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ url: link, from, weeks: 20 }),
           signal: AbortSignal.timeout(30000),
         });
-        if (response.status === 404)
+        const data = (await response.json().catch(() => null)) as {
+          events?: UniEvent[];
+          upstream?: number | string;
+          detail?: string;
+        } | null;
+        // Without Netlify (plain Expo dev server) the answer is not JSON.
+        if (!data || response.status === 404)
           throw new Error(
-            "Der Stundenplan-Import läuft im Browser über Netlify. Lokal bitte „npx netlify dev“ nutzen oder die App am Handy öffnen.",
+            "Der Stundenplan-Dienst antwortet nicht. Lokal den Expo-Server neu starten (npx expo start), online neu deployen.",
           );
-        if (!response.ok)
-          throw new Error("Rapla ist gerade nicht erreichbar. Prüfe deinen Link.");
-        events = ((await response.json()) as { events: UniEvent[] }).events;
+        if (!response.ok) throw new Error(raplaProblem(response.status, data));
+        events = data.events || [];
       } else {
         const response = await fetch(raplaWeeksUrl(link, from, 20), {
           signal: AbortSignal.timeout(30000),
         });
         if (!response.ok)
-          throw new Error("Rapla ist gerade nicht erreichbar. Prüfe deinen Link.");
-        events = parseRapla(await response.text(), from);
+          throw new Error(raplaProblem(502, { upstream: response.status }));
+        const html = await response.text();
+        if (!html.includes("week_table"))
+          throw new Error(raplaProblem(422, { detail: "" }));
+        events = parseRapla(html, from);
       }
       if (!Array.isArray(events)) throw new Error("Ungültige Antwort von Rapla.");
       update((prev) =>
