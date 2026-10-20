@@ -74,3 +74,13 @@ test("food estimates are cleaned and summed, inputs are checked", async () => {
   assert.equal(sent.store, false);
   assert.equal(sent.input[0].content.length, 1, "text only without photo");
 });
+
+test("calendar proxy needs the token and refuses internal addresses", async () => {
+  const { default: ical } = await import("../netlify/functions/ical.mjs");
+  process.env.HAP_ACCESS_TOKEN = "t".repeat(40);
+  const ok = { Authorization: "Bearer " + "t".repeat(40), "Content-Type": "application/json" };
+  const call = (url, headers = ok) => ical(new Request("https://e.test", { method: "POST", headers, body: JSON.stringify({ url }) }));
+  assert.equal((await call("https://example.com/a.ics", {})).status, 401);
+  for (const bad of ["http://example.com/a.ics", "https://127.0.0.1/a.ics", "https://169.254.169.254/latest", "https://[::1]/x", "https://localhost/x", "https://10.0.0.5/x", "ftp://example.com"])
+    assert.equal((await call(bad)).status, 400, bad);
+});

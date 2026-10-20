@@ -5,27 +5,34 @@ const { pathToFileURL } = require("node:url");
 
 const config = getDefaultConfig(__dirname);
 
-// Local web development has no Netlify Functions. The Rapla import is served
-// by the same function code here, so the timetable also loads on localhost.
-const raplaFunction = pathToFileURL(
-  path.join(__dirname, "netlify/functions/uni-calendar.mjs"),
-).href;
+// Local web development has no Netlify Functions. The timetable and calendar
+// imports are served by the same function code here, so they work on localhost.
+const localFunctions = ["uni-calendar", "ical"];
 config.server.enhanceMiddleware = (middleware) => async (req, res, next) => {
-  if (!req.url?.startsWith("/.netlify/functions/uni-calendar"))
-    return middleware(req, res, next);
+  const name = localFunctions.find((f) =>
+    req.url?.startsWith("/.netlify/functions/" + f),
+  );
+  if (!name) return middleware(req, res, next);
   try {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    const { default: handler } = await import(raplaFunction);
+    const file = path.join(__dirname, "netlify/functions", name + ".mjs");
+    const { default: handler } = await import(pathToFileURL(file).href);
     const response = await handler(
       new Request("http://localhost" + req.url, {
         method: req.method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: req.headers.authorization || "",
+        },
         body: req.method === "POST" ? Buffer.concat(chunks) : undefined,
       }),
     );
     res.statusCode = response.status;
-    res.setHeader("Content-Type", "application/json");
+    res.setHeader(
+      "Content-Type",
+      response.headers.get("content-type") || "application/json",
+    );
     res.end(await response.text());
   } catch {
     res.statusCode = 500;

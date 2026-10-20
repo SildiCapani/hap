@@ -7,6 +7,7 @@ import { validRaplaUrl } from "@/lib/rapla";
 import { goals } from "@/lib/training";
 import type { Goal } from "@/lib/planner";
 import { FoodTracker } from "./food";
+import { CalendarSettings } from "./calendar-settings";
 import { router } from "expo-router";
 import {
   ArrowDownToLine,
@@ -690,6 +691,7 @@ function SettingsContent() {
         </View>
         <CloudSettings />
         <UniSettings />
+        <CalendarSettings />
         <NotifySettings />
         <View style={[s.card, { padding: 26, gap: 14 }]}>
           <View style={s.row}>

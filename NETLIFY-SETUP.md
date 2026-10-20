@@ -58,6 +58,19 @@ direkte Abrufe (CORS), deshalb läuft der Import dort über die Function
 bleibt nur auf dem Gerät gespeichert und wird nicht in Netlify hinterlegt.
 Hap lädt den Plan alle 6 Stunden und bei der Rückkehr zur App neu.
 
+## Kalender-Abos (Reisen, Google, Outlook, iCloud, TripIt)
+
+Unter Einstellungen → Kalender-Abos beliebige iCal-Links (`webcal://` oder
+`https://…`) abonnieren. Hap lädt sie alle 2 Stunden und beim Öffnen neu und
+zeigt die Termine im Zeitplan, optional mit Erinnerung (z. B. 3 Std. vor Flügen).
+Im Browser läuft der Abruf über die Function `ical` (braucht den App-Zugang und
+ruft keine internen Netzwerkadressen ab), in der nativen App direkt.
+
+Für Bahn und Flug: im iPhone-Kalender einen eigenen Kalender „Reisen“ anlegen,
+als öffentlichen Kalender teilen und den Link abonnieren; Reisen aus dem
+DB Navigator mit „In Kalender übernehmen“ dort eintragen. Alternativ
+Buchungsmails an TripIt weiterleiten und dessen „Calendar Feed“ abonnieren.
+
 ## Profil für die Essensplanung
 
 Profil (Alter, Größe, Gewicht, Ziel, Vorlieben) und Trainingstage werden mit dem

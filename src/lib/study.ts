@@ -96,6 +96,9 @@ export function freeSlots(state: PlannerState, day: string, from = 8 * 60, to = 
     ...state.uniEvents
       .filter((e) => e.date === day && e.kind !== "info")
       .map((e) => ({ start: minutes(e.start), end: minutes(e.end) })),
+    ...state.calEvents
+      .filter((e) => e.date === day && !e.allDay)
+      .map((e) => ({ start: minutes(e.start), end: minutes(e.end) })),
   ].sort((a, b) => a.start - b.start);
   const slots: Slot[] = [];
   let cursor = from;

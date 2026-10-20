@@ -19,9 +19,11 @@ import {
   shiftDay,
   storageKey,
   validMealPlan,
+  type Calendar,
   type PlannerState,
 } from "./planner";
 import { parseRapla, raplaWeeksUrl, type UniEvent } from "./rapla";
+import { normalizeCalendarUrl, parseIcs, type CalEvent } from "./ics";
 import { reminders } from "./reminders";
 import { schedule } from "./notify";
 import { currentSubscription, syncWebPush } from "./webpush";
@@ -60,6 +62,8 @@ type Store = {
   syncing: boolean;
   mealStatus: string;
   syncUni: () => Promise<void>;
+  syncCalendars: (only?: string | Calendar) => Promise<void>;
+  calSyncing: boolean;
   uniSyncing: boolean;
   uniStatus: string;
   pushProfile: () => Promise<string>;
@@ -323,6 +327,94 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       subscription.remove();
     };
   }, [ready, state.raplaUrl, state.uniSynced, syncUni]);
+  const [calSyncing, setCalSyncing] = useState(false);
+  const calFlight = useRef(false);
+  const syncCalendars = useCallback(
+    async (only?: string | Calendar) => {
+      if (!ready || calFlight.current) return;
+      // A just-added calendar is passed directly; it is not in this render's state yet.
+      const list =
+        typeof only === "object" ? [only] : state.calendars.filter((c) => !only || c.id === only);
+      if (!list.length) return;
+      calFlight.current = true;
+      setCalSyncing(true);
+      const from = shiftDay(dateKey(), -14), to = shiftDay(dateKey(), 180);
+      const results: { id: string; events?: CalEvent[]; error: string }[] = [];
+      for (const cal of list) {
+        try {
+          const url = normalizeCalendarUrl(cal.url);
+          if (!url) throw new Error("Ungültiger Link (muss mit https:// oder webcal:// beginnen).");
+          let text: string;
+          if (Platform.OS === "web") {
+            if (!state.accessToken) throw new Error("Im Browser braucht das Abo deinen App-Zugang (Einstellungen).");
+            const response = await fetch(state.apiUrl.replace(/\/$/, "") + "/.netlify/functions/ical", {
+              method: "POST",
+              headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
+              body: JSON.stringify({ url }),
+              signal: AbortSignal.timeout(30000),
+            });
+            if (response.status === 401) throw new Error("Der App-Zugang stimmt nicht mit Netlify überein.");
+            if (response.status === 400) throw new Error("Dieser Link kann nicht abonniert werden.");
+            if (response.status === 422) throw new Error("Unter dem Link liegt kein Kalender. Ist er öffentlich freigegeben?");
+            if (!response.ok) throw new Error("Kalender nicht erreichbar (" + response.status + ").");
+            text = await response.text();
+          } else {
+            const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+            if (!response.ok) throw new Error("Kalender nicht erreichbar (" + response.status + ").");
+            text = await response.text();
+            if (!text.includes("BEGIN:VCALENDAR")) throw new Error("Unter dem Link liegt kein Kalender.");
+          }
+          results.push({ id: cal.id, events: parseIcs(text, cal.id, from, to), error: "" });
+        } catch (e) {
+          results.push({
+            id: cal.id,
+            error: e instanceof Error && e.name !== "TypeError" ? e.message : "Keine Verbindung. Die letzten Termine bleiben gespeichert.",
+          });
+        }
+      }
+      update((prev) => {
+        const fresh = results.filter((r) => r.events && prev.calendars.some((c) => c.id === r.id));
+        return {
+          ...prev,
+          calEvents: [
+            ...prev.calEvents.filter((e) => !fresh.some((r) => r.id === e.calId) && prev.calendars.some((c) => c.id === e.calId)),
+            ...fresh.flatMap((r) => r.events || []),
+          ],
+          calendars: prev.calendars.map((c) => {
+            const r = results.find((x) => x.id === c.id);
+            return r ? { ...c, error: r.error, syncedAt: r.events ? new Date().toISOString() : c.syncedAt } : c;
+          }),
+        };
+      });
+      calFlight.current = false;
+      setCalSyncing(false);
+    },
+    [ready, state.calendars, state.accessToken, state.apiUrl, update],
+  );
+  // Failed feeds are retried at most every 10 minutes.
+  const calTried = useRef(0);
+  useEffect(() => {
+    if (!ready || !state.calendars.length) return;
+    const due = () =>
+      Date.now() - calTried.current > 10 * 60 * 1000 &&
+      state.calendars.some(
+        (c) => !c.syncedAt || Date.now() - new Date(c.syncedAt).valueOf() > 2 * 3600 * 1000,
+      );
+    const run = () => {
+      calTried.current = Date.now();
+      void syncCalendars();
+    };
+    const startup = setTimeout(() => {
+      if (due()) run();
+    }, 0);
+    const subscription = AppState.addEventListener("change", (value) => {
+      if (value === "active" && due()) run();
+    });
+    return () => {
+      clearTimeout(startup);
+      subscription.remove();
+    };
+  }, [ready, state.calendars, syncCalendars]);
   // A running focus round completes even when the focus screen is closed.
   const focusEnd =
     state.activeFocus && state.activeFocus.pausedLeft === null
@@ -501,6 +593,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         mealStatus,
         syncMeals,
         syncUni,
+        syncCalendars,
+        calSyncing,
         uniSyncing,
         uniStatus,
         pushProfile,

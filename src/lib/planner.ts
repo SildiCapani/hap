@@ -1,4 +1,5 @@
 import type { UniEvent } from "./rapla";
+import type { CalEvent } from "./ics";
 
 export const categories = {
   uni: { label: "Uni", color: "#C4A3EF", pale: "#2D263C", icon: "graduation" },
@@ -131,6 +132,15 @@ export type FoodEntry = {
   items: { name: string; amount: string; kcal: number }[];
   source: "photo" | "manual";
 };
+export type Calendar = {
+  id: string;
+  name: string;
+  url: string;
+  color: string;
+  lead: number; // reminder minutes before an event, 0 = none
+  syncedAt: string;
+  error: string;
+};
 export type Goal = "bulk" | "cut" | "maintain";
 export type Profile = {
   age: number;
@@ -179,6 +189,8 @@ export type PlannerState = {
   cloudLinked: boolean;
   todos: Todo[];
   foodLog: FoodEntry[];
+  calendars: Calendar[];
+  calEvents: CalEvent[];
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -229,6 +241,8 @@ const extras = (): Omit<
   cloudLinked: false,
   todos: [],
   foodLog: [],
+  calendars: [],
+  calEvents: [],
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {
@@ -499,6 +513,8 @@ export function readState(raw: string): PlannerState {
     ![
       value.todos,
       value.foodLog,
+      value.calendars,
+      value.calEvents,
       value.uniEvents,
       value.exams,
       value.focus,

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Pressable, Text, View, type DimensionValue } from "react-native";
 import { router } from "expo-router";
 import {
+  CalendarDays,
   Check,
   Dumbbell,
   Flag,
@@ -16,6 +17,7 @@ import { clock } from "@/lib/study";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import type { UniEvent } from "@/lib/rapla";
+import type { CalEvent } from "@/lib/ics";
 import { Button, C, Icon, Sheet, s, useEditor, useToday } from "./planner-ui";
 
 const HOUR = 60;
@@ -36,6 +38,7 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
   const today = useToday();
   const now = useNow();
   const [event, setEvent] = useState<UniEvent | null>(null);
+  const [calEvent, setCalEvent] = useState<CalEvent | null>(null);
   const [expanded, setExpanded] = useState(false);
   const { timed: all, allDay } = agenda(state, day);
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -57,6 +60,7 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
     tap();
     if (item.kind === "task") edit(day, item.task);
     else if (item.kind === "uni" && item.event) setEvent(item.event);
+    else if (item.kind === "cal" && item.cal) setCalEvent(item.cal);
     else if (item.kind === "training") router.push("/training" as "/");
     else router.push("/study" as "/");
   }
@@ -186,7 +190,9 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
                     </Text>
                     {!compact && (
                       <View style={[s.row, { gap: 5, marginTop: 3 }]}>
-                        {item.kind === "uni" ? (
+                        {item.kind === "cal" ? (
+                          <CalendarDays size={11} color={item.color} />
+                        ) : item.kind === "uni" ? (
                           <GraduationCap size={11} color={item.color} />
                         ) : item.kind === "training" ? (
                           <Dumbbell size={11} color={item.color} />
@@ -243,7 +249,36 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
         <Text style={s.link}>Tippe auf eine Uhrzeit oder füge hier etwas hinzu</Text>
       </Pressable>
       {event && <EventSheet event={event} close={() => setEvent(null)} />}
+      {calEvent && <CalEventSheet event={calEvent} close={() => setCalEvent(null)} />}
     </View>
+  );
+}
+
+function CalEventSheet({ event, close }: { event: CalEvent; close: () => void }) {
+  const { state } = usePlanner();
+  const cal = state.calendars.find((c) => c.id === event.calId);
+  return (
+    <Sheet
+      title={event.title}
+      subtitle={
+        parseDate(event.date).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }) +
+        (event.allDay ? " · ganztägig" : " · " + event.start + "–" + event.end)
+      }
+      close={close}
+      footer={<Button onPress={close}>Schließen</Button>}
+    >
+      {event.location ? (
+        <View style={s.row}>
+          <MapPin size={16} color={cal?.color || C.green} />
+          <Text style={[s.body, { flex: 1 }]}>{event.location}</Text>
+        </View>
+      ) : null}
+      {event.note ? <Text style={[s.body, { color: C.muted, lineHeight: 21 }]}>{event.note}</Text> : null}
+      <View style={s.row}>
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: cal?.color || C.green }} />
+        <Text style={s.micro}>Aus deinem Kalender-Abo „{cal?.name}“. Änderungen machst du im Original-Kalender.</Text>
+      </View>
+    </Sheet>
   );
 }
 

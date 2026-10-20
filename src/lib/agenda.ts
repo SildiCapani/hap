@@ -8,12 +8,13 @@ import {
   type Exam,
 } from "./planner.ts";
 import { minutes, type UniEvent } from "./rapla.ts";
+import type { CalEvent } from "./ics.ts";
 import { clock, examKinds, focusPick, hoursLabel, upcomingExams } from "./study.ts";
 import { loggedOn, workoutsFor } from "./training.ts";
 
 export type AgendaItem = {
   key: string;
-  kind: "task" | "uni" | "training" | "exam";
+  kind: "task" | "uni" | "training" | "exam" | "cal";
   title: string;
   start: number;
   end: number;
@@ -25,6 +26,7 @@ export type AgendaItem = {
   event?: UniEvent;
   workout?: Workout;
   exam?: Exam;
+  cal?: CalEvent;
 };
 
 export const uniColor = { color: "#B9A2F2", pale: "#2A2440" };
@@ -64,6 +66,23 @@ export function agenda(state: PlannerState, day: string) {
       event: e,
     };
     (allDayUni(e) ? allDay : timed).push(item);
+  }
+  for (const e of state.calEvents.filter((x) => x.date === day)) {
+    const cal = state.calendars.find((c) => c.id === e.calId);
+    if (!cal) continue;
+    const item: AgendaItem = {
+      key: "c:" + e.id,
+      kind: "cal",
+      title: e.title,
+      start: minutes(e.start),
+      end: Math.max(minutes(e.end), minutes(e.start)),
+      color: cal.color,
+      pale: cal.color + "26",
+      sub: [e.location, cal.name].filter(Boolean).join(" · "),
+      done: false,
+      cal: e,
+    };
+    (e.allDay ? allDay : timed).push(item);
   }
   for (const w of workoutsFor(state, day)) {
     const start = minutes(w.time);

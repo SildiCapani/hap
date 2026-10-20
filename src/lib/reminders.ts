@@ -41,8 +41,10 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
     const { timed } = agenda(state, day);
     for (const item of timed) {
       if (item.done) continue;
+      const calLead = item.cal ? state.calendars.find((c) => c.id === item.cal?.calId)?.lead || 0 : 0;
+      if (item.kind === "cal" && !calLead) continue;
       const lead =
-        item.kind === "uni" ? 15 : item.kind === "training" ? 30 : n.lead;
+        item.kind === "cal" ? calLead : item.kind === "uni" ? 15 : item.kind === "training" ? 30 : n.lead;
       if (
         (item.kind === "uni" && !n.lectures) ||
         (item.kind === "task" && !n.tasks) ||
@@ -56,7 +58,9 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
         id: item.key + ":" + day,
         at: time,
         title:
-          item.kind === "uni"
+          item.kind === "cal"
+            ? (calLead >= 60 ? "In " + calLead / 60 + " Std.: " : "In " + calLead + " Min.: ") + item.title
+            : item.kind === "uni"
             ? "In 15 Min.: " + item.title
             : item.kind === "training"
               ? "Gleich Training: " + item.workout?.name + " 💪"
@@ -64,7 +68,9 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
                 ? item.title + " in 30 Min."
                 : item.title,
         body:
-          item.kind === "uni"
+          item.kind === "cal"
+            ? (item.cal?.location ? item.cal.location + " · " : "") + "um " + item.cal?.start
+            : item.kind === "uni"
             ? (room ? "Raum " + room : "Vorlesung") + " · bis " + item.event?.end
             : item.kind === "training"
               ? "Um " + item.workout?.time + " · " + item.workout?.exercises.length + " Übungen. Trinken nicht vergessen."
