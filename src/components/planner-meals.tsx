@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Platform, Pressable, Share, Switch, Text, View } from "react-native";
-import { tap } from "@/lib/notify";
+import { tap, testLocal } from "@/lib/notify";
 import { InstallCard, useNotifyToggle, usePushActive } from "./install-card";
+import { sendTestPush } from "@/lib/webpush";
 import { validRaplaUrl } from "@/lib/rapla";
 import { goals, nutrition, workoutsFor } from "@/lib/training";
 import type { Goal } from "@/lib/planner";
@@ -11,6 +12,8 @@ import {
   ArrowDownToLine,
   Beef,
   Bell,
+  Cloud,
+  Sparkles,
   Check,
   GraduationCap,
   User,
@@ -186,7 +189,8 @@ function NutritionCard() {
 }
 
 function MealsContent() {
-  const { state, update, syncing, mealStatus, syncMeals } = usePlanner();
+  const { state, update, syncing, mealStatus, syncMeals, generateMeals } = usePlanner();
+  const [generating, setGenerating] = useState("");
   const today = useToday();
   const [tab, setTab] = useState<"plan" | "groceries">("plan");
   const plan = state.mealPlan;
@@ -235,6 +239,26 @@ function MealsContent() {
           <Text style={[s.body, { lineHeight: 22 }]}>{mealStatus}</Text>
         </View>
       ) : null}
+      {state.accessToken && (!plan || plan.weekStart < monday(today)) && (
+        <View style={[s.card, { padding: 20, gap: 12, marginBottom: 18 }]}>
+          <Text style={s.h3}>Noch kein Plan für diese Woche</Text>
+          <Text style={[s.muted, { lineHeight: 19 }]}>
+            Die KI erstellt Frühstück, Mittag- und Abendessen plus Einkaufsliste – passend zu deinem Profil und deinen Trainingstagen.
+          </Text>
+          <Button
+            icon={Sparkles}
+            disabled={!!generating && generating.startsWith("…")}
+            onPress={() => {
+              tap("medium");
+              setGenerating("… Wird gestartet");
+              void generateMeals().then(setGenerating);
+            }}
+          >
+            Plan jetzt erstellen
+          </Button>
+          {generating ? <Text style={[s.micro, { lineHeight: 17 }]}>{generating}</Text> : null}
+        </View>
+      )}
       {!plan ? (
         <View style={[s.card, s.empty, { paddingVertical: 50 }]}>
           <Leaf size={45} color="#C192A1" strokeWidth={1.3} />
@@ -461,6 +485,57 @@ function UniSettings() {
   );
 }
 
+function CloudSettings() {
+  const { state, cloud, resolveCloud, checkCloud } = usePlanner();
+  const [confirm, setConfirm] = useState(false);
+  if (!state.accessToken) return null;
+  const pending = cloud.pending;
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString("de-DE", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+  return (
+    <View style={[s.card, { padding: 26, gap: 14 }, pending && { borderColor: C.green }]}>
+      <View style={s.row}>
+        <Cloud size={20} color={C.green} />
+        <Heading>Cloud-Backup</Heading>
+      </View>
+      {pending ? (
+        <>
+          <Text style={[s.body, { lineHeight: 22 }]}>
+            In deiner Cloud liegen Daten vom {when(pending.savedAt)} ({pending.state.tasks.length} Aufgaben,{" "}
+            {pending.state.exams.length} Prüfungen, {pending.state.workoutLogs.length} Trainings). Welche Daten sollen gelten?
+          </Text>
+          <Button icon={Cloud} onPress={() => resolveCloud(true)}>
+            Cloud-Daten übernehmen
+          </Button>
+          {!confirm ? (
+            <Button quiet onPress={() => setConfirm(true)}>
+              Dieses Gerät behalten
+            </Button>
+          ) : (
+            <Button quiet danger onPress={() => resolveCloud(false)}>
+              Ja, Cloud mit diesem Gerät überschreiben
+            </Button>
+          )}
+        </>
+      ) : (
+        <>
+          <Text style={[s.body, { color: C.muted, lineHeight: 22 }]}>
+            {state.cloudLinked
+              ? "Hap sichert deine Daten automatisch in deinem Netlify-Speicher. Auf einem neuen Gerät oder in der App vom Home-Bildschirm holst du sie mit deinem App-Zugang zurück."
+              : "Hap prüft gerade, ob es schon eine Sicherung gibt …"}
+          </Text>
+          {cloud.savedAt ? <Text style={s.micro}>Zuletzt gesichert: {when(cloud.savedAt)}</Text> : null}
+          {state.cloudLinked && (
+            <Pressable onPress={() => void checkCloud()}>
+              <Text style={s.link}>Sicherung aus der Cloud laden</Text>
+            </Pressable>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
 function NotifySettings() {
   const { state, update } = usePlanner();
   const n = state.notify;
@@ -529,6 +604,27 @@ function NotifySettings() {
         </View>
       )}
       <InstallCard dismissible={false} />
+      {n.enabled && (
+        <Button
+          quiet
+          icon={Bell}
+          onPress={() => {
+            setMessage("Wird gesendet …");
+            void (push
+              ? sendTestPush(state.apiUrl, state.accessToken)
+              : testLocal().then((ok) =>
+                  ok
+                    ? Platform.OS === "web"
+                      ? "Test angezeigt. Ohne Push kommen Erinnerungen nur, solange Hap offen ist."
+                      : "Test kommt in 3 Sekunden."
+                    : "Benachrichtigungen sind nicht erlaubt.",
+                )
+            ).then(setMessage);
+          }}
+        >
+          Test-Benachrichtigung senden
+        </Button>
+      )}
       {n.enabled && (
         <>
           {toggles.map((t) => (
@@ -655,6 +751,7 @@ function SettingsContent() {
             />
           </View>
         </View>
+        <CloudSettings />
         <UniSettings />
         <NotifySettings />
         <View style={[s.card, { padding: 26, gap: 14 }]}>

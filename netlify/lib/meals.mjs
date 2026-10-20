@@ -152,3 +152,32 @@ export function json(body, status = 200) {
     },
   });
 }
+
+export function generationConfigured(env = process.env) {
+  return (
+    !!env.HAP_JOB_SECRET &&
+    env.HAP_JOB_SECRET.length >= 32 &&
+    !!env.OPENAI_API_KEY &&
+    !!env.OPENAI_MODEL &&
+    !!env.MEAL_PLAN_PROMPT
+  );
+}
+// Starts the background generation. It never creates a second plan for a
+// week that is already stored, so repeated calls cost nothing extra.
+export async function queueGeneration(env = process.env, fetcher = fetch) {
+  const origin = env.URL;
+  if (!origin?.startsWith("https://"))
+    throw new Error("Missing Netlify site URL");
+  const response = await fetcher(
+    origin + "/.netlify/functions/generate-meals-background",
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer " + env.HAP_JOB_SECRET },
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  if (!response.ok)
+    throw new Error(
+      "Could not start meal generation (" + response.status + ")",
+    );
+}

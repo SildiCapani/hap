@@ -89,3 +89,22 @@ export function tap(kind: "light" | "medium" | "success" | "heavy" = "light") {
       )
   ).catch(() => {});
 }
+
+// Shows a test reminder on this device (native: in 3 seconds).
+export async function testLocal(): Promise<boolean> {
+  try {
+    if (Platform.OS === "web") {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+      new Notification("Test von Hap ✅", { body: "So sehen deine Erinnerungen aus.", icon: "/icons/icon-192.png" });
+      return true;
+    }
+    if (!(await Notifications.getPermissionsAsync()).granted) return false;
+    await Notifications.scheduleNotificationAsync({
+      content: { title: "Test von Hap ✅", body: "So sehen deine Erinnerungen aus.", sound: true },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 3, channelId: "default" },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}

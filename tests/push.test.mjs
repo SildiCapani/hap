@@ -27,3 +27,18 @@ test("due reminders are sent once, late ones within 20 minutes", () => {
   // A new sync from the phone keeps the sent list, so nothing is repeated.
   assert.deepEqual(dueReminders({ ...after, reminders: [r("now", 0), r("later", 5)] }, now + 5 * 60000).map((x) => x.id), ["later"]);
 });
+
+test("app endpoints reject requests without the app token", async () => {
+  const { default: backup } = await import("../netlify/functions/backup.mjs");
+  const { default: generate } = await import("../netlify/functions/meal-generate.mjs");
+  const { default: push } = await import("../netlify/functions/push.mjs");
+  process.env.HAP_ACCESS_TOKEN = "t".repeat(40);
+  Object.assign(process.env, { VAPID_PUBLIC_KEY: "p", VAPID_PRIVATE_KEY: "k", VAPID_SUBJECT: "mailto:a@b.c" });
+  const wrong = { Authorization: "Bearer " + "x".repeat(40) };
+  assert.equal((await backup(new Request("https://e.test", { headers: wrong }))).status, 401);
+  assert.equal((await backup(new Request("https://e.test", { method: "PUT", headers: wrong, body: "{}" }))).status, 401);
+  assert.equal((await generate(new Request("https://e.test", { method: "POST", headers: wrong }))).status, 401);
+  assert.equal((await push(new Request("https://e.test", { method: "POST", headers: wrong, body: "{}" }))).status, 401);
+  assert.equal((await generate(new Request("https://e.test"))).status, 405);
+  assert.equal((await push(new Request("https://e.test"))).status, 200, "public key stays readable");
+});

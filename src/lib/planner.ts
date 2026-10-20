@@ -148,6 +148,7 @@ export type PlannerState = {
   profile: Profile;
   notify: NotifySettings;
   installHidden: boolean;
+  cloudLinked: boolean;
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -195,6 +196,7 @@ const extras = (): Omit<
   profile: { ...defaultProfile },
   notify: { ...defaultNotify },
   installHidden: false,
+  cloudLinked: false,
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {

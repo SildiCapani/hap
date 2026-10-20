@@ -130,3 +130,18 @@ export async function promptInstall() {
   listeners.forEach((l) => l());
   return outcome === "accepted";
 }
+
+export async function sendTestPush(base: string, token: string): Promise<string> {
+  const sub = await currentSubscription();
+  if (!sub) return "Push ist auf diesem Gerät noch nicht aktiv. Schalte zuerst die Erinnerungen ein.";
+  const response = await fetch(endpoint(base), {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ subscription: sub.toJSON() }),
+    signal: AbortSignal.timeout(15000),
+  }).catch(() => null);
+  if (!response) return "Keine Verbindung zu Netlify.";
+  if (response.status === 401) return "Der App-Zugang stimmt nicht mit HAP_ACCESS_TOKEN auf Netlify überein.";
+  if (!response.ok) return "Netlify konnte die Test-Nachricht nicht senden (" + response.status + ").";
+  return "Test gesendet – die Benachrichtigung sollte gleich erscheinen.";
+}

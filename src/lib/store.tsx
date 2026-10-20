@@ -63,6 +63,10 @@ type Store = {
   uniSyncing: boolean;
   uniStatus: string;
   pushProfile: () => Promise<string>;
+  generateMeals: () => Promise<string>;
+  cloud: { savedAt: string; pending: { state: PlannerState; savedAt: string } | null };
+  checkCloud: () => Promise<void>;
+  resolveCloud: (useCloud: boolean) => void;
 };
 const Context = createContext<Store | null>(null);
 export function PlannerProvider({ children }: { children: ReactNode }) {
@@ -395,6 +399,84 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       return "Profil lokal gespeichert. Netlify ist gerade nicht erreichbar.";
     }
   }, [state]);
+  const [cloud, setCloud] = useState<Store["cloud"]>({ savedAt: "", pending: null });
+  const base = state.apiUrl.replace(/\/$/, "");
+  const generateMeals = useCallback(async () => {
+    if (!state.accessToken) return "Trag zuerst deinen persönlichen App-Zugang ein.";
+    const response = await fetch(base + "/.netlify/functions/meal-generate", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + state.accessToken },
+      signal: AbortSignal.timeout(20000),
+    }).catch(() => null);
+    if (!response) return "Keine Verbindung zu Netlify.";
+    if (response.status === 401) return "Der App-Zugang stimmt nicht mit HAP_ACCESS_TOKEN auf Netlify überein.";
+    if (response.status === 503) return "Die Essensplanung ist auf Netlify nicht vollständig eingerichtet (OPENAI_API_KEY, OPENAI_MODEL, MEAL_PLAN_PROMPT, HAP_JOB_SECRET).";
+    if (!response.ok) return "Netlify konnte die Erstellung nicht starten (" + response.status + ").";
+    const { status } = (await response.json()) as { status: string };
+    if (status === "already-generated") {
+      void syncMeals();
+      return "Für diese Woche gibt es schon einen Plan – er wird geladen.";
+    }
+    // The plan is ready after one to three minutes; check every 20 seconds.
+    for (let i = 1; i <= 12; i++) setTimeout(() => void syncMeals(), i * 20000);
+    return "Die KI erstellt deinen Plan. Das dauert 1–3 Minuten, Hap lädt ihn automatisch.";
+  }, [base, state.accessToken, syncMeals]);
+  const checkCloud = useCallback(async () => {
+    if (!ready || !state.accessToken) return;
+    const response = await fetch(base + "/.netlify/functions/backup", {
+      headers: { Authorization: "Bearer " + state.accessToken },
+      signal: AbortSignal.timeout(20000),
+    }).catch(() => null);
+    if (!response) return;
+    if (response.status === 404) {
+      update((prev) => ({ ...prev, cloudLinked: true }));
+      return;
+    }
+    if (!response.ok) return;
+    const backup = (await response.json()) as { state: PlannerState; savedAt: string };
+    try {
+      const restored = readState(JSON.stringify(backup.state));
+      setCloud({ savedAt: backup.savedAt, pending: { state: restored, savedAt: backup.savedAt } });
+    } catch {
+      // A broken cloud copy must never replace local data.
+    }
+  }, [ready, base, state.accessToken, update]);
+  const resolveCloud = useCallback(
+    (useCloud: boolean) => {
+      const pending = cloud.pending;
+      update((prev) =>
+        useCloud && pending
+          ? { ...pending.state, accessToken: prev.accessToken, apiUrl: prev.apiUrl, cloudLinked: true }
+          : { ...prev, cloudLinked: true },
+      );
+      setCloud((c) => ({ ...c, pending: null }));
+    },
+    [cloud.pending, update],
+  );
+  // A device only uploads after it was linked, so a fresh install can never
+  // overwrite the real data in the cloud before the user decides.
+  useEffect(() => {
+    if (!ready || !state.accessToken || state.cloudLinked) return;
+    const timer = setTimeout(() => void checkCloud(), 0);
+    return () => clearTimeout(timer);
+  }, [ready, state.accessToken, state.cloudLinked, checkCloud]);
+  useEffect(() => {
+    if (!ready || !state.accessToken || !state.cloudLinked) return;
+    const timer = setTimeout(() => {
+      void fetch(base + "/.netlify/functions/backup", {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ state: { ...state, accessToken: "" } }),
+        signal: AbortSignal.timeout(20000),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((r: { savedAt?: string } | null) => {
+          if (r?.savedAt) setCloud((c) => ({ ...c, savedAt: r.savedAt as string }));
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [ready, state, base]);
   // Keep the meal planning profile on Netlify in sync with goals and training days.
   const profileKey = ready && state.accessToken ? profileText(state) : "";
   const sentProfile = useRef("");
@@ -422,6 +504,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         uniSyncing,
         uniStatus,
         pushProfile,
+        generateMeals,
+        cloud,
+        checkCloud,
+        resolveCloud,
       }}
     >
       {children}
