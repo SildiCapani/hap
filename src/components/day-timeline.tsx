@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
-import { Pressable, Text, View, type DimensionValue } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { Platform, Pressable, Text, View, type DimensionValue, type ViewStyle } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { router } from "expo-router";
 import {
   CalendarDays,
   Check,
+  Footprints,
+  TrainFront,
   Dumbbell,
   Flag,
   GraduationCap,
@@ -11,8 +16,9 @@ import {
   Plus,
   User,
 } from "lucide-react-native";
-import { occurrenceKey, parseDate } from "@/lib/planner";
+import { newId, occurrenceKey, parseDate, type Task } from "@/lib/planner";
 import { agenda, layout, type AgendaItem } from "@/lib/agenda";
+import { modeLabel, placeName } from "@/lib/transport";
 import { clock } from "@/lib/study";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
@@ -32,6 +38,117 @@ export function useNow(interval = 30000) {
   return now;
 }
 
+let dragging = false;
+let droppedAt = 0;
+function setDragging(value: boolean) {
+  dragging = value;
+  if (!value) droppedAt = Date.now();
+}
+// The release after a drag must not count as a tap.
+function justDropped() {
+  return Date.now() - droppedAt < 400;
+}
+// While a drag is active on the web, the page must not scroll under the finger.
+if (Platform.OS === "web" && typeof document !== "undefined")
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (dragging) e.preventDefault();
+    },
+    { passive: false },
+  );
+
+// Long-press, then drag up or down: the start time follows in 5-minute steps.
+function Draggable({
+  enabled,
+  style,
+  minDy,
+  maxDy,
+  onMove,
+  onDrop,
+  onPress,
+  label,
+  children,
+}: {
+  enabled: boolean;
+  style: ViewStyle;
+  minDy: number;
+  maxDy: number;
+  onMove: (step: number) => void;
+  onDrop: (step: number) => void;
+  onPress: () => void;
+  label: string;
+  children: ReactNode;
+}) {
+  const y = useSharedValue(0);
+  const lifted = useSharedValue(0);
+  const step = useSharedValue(0);
+  const begin = () => {
+    setDragging(true);
+    tap("medium");
+    onMove(0);
+  };
+  const move = (n: number) => {
+    if (n % 15 === 0) tap("select");
+    onMove(n);
+  };
+  const end = (n: number) => {
+    setDragging(false);
+    onDrop(n);
+  };
+  const cleanup = () => {
+    if (dragging) setDragging(false);
+  };
+  const press = () => {
+    if (!justDropped()) onPress();
+  };
+  const pan = Gesture.Pan()
+    .enabled(enabled)
+    .activateAfterLongPress(350)
+    .onStart(() => {
+      lifted.value = withTiming(1, { duration: 120 });
+      scheduleOnRN(begin);
+    })
+    .onUpdate((e) => {
+      const dy = Math.min(maxDy, Math.max(minDy, e.translationY));
+      y.value = dy;
+      const n = Math.round((dy / HOUR) * 12) * 5;
+      if (n !== step.value) {
+        step.value = n;
+        scheduleOnRN(move, n);
+      }
+    })
+    .onEnd(() => {
+      scheduleOnRN(end, step.value);
+    })
+    .onFinalize(() => {
+      lifted.value = withTiming(0, { duration: 150 });
+      y.value = 0;
+      step.value = 0;
+      scheduleOnRN(cleanup);
+    });
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ translateY: y.value }, { scale: 1 + lifted.value * 0.03 }],
+    zIndex: lifted.value > 0 ? 20 : 1,
+    shadowOpacity: lifted.value * 0.5,
+  }));
+  return (
+    <GestureDetector gesture={pan} touchAction="pan-y" userSelect="none">
+      <Animated.View style={[style, { shadowColor: "#000", shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }, animated]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityHint={enabled ? "Gedrückt halten und ziehen, um die Uhrzeit zu ändern" : undefined}
+          onPress={press}
+          style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}
+        >
+          {children}
+        </Pressable>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
 export function DayTimeline({ day, compact = false }: { day: string; compact?: boolean }) {
   const { state, update } = usePlanner();
   const edit = useEditor();
@@ -39,6 +156,9 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
   const now = useNow();
   const [event, setEvent] = useState<UniEvent | null>(null);
   const [calEvent, setCalEvent] = useState<CalEvent | null>(null);
+  const [drag, setDrag] = useState<{ key: string; start: number } | null>(null);
+  const [series, setSeries] = useState<{ task: Task; time: string } | null>(null);
+  const [travel, setTravel] = useState<AgendaItem | null>(null);
   const [expanded, setExpanded] = useState(false);
   const { timed: all, allDay } = agenda(state, day);
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -62,7 +182,30 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
     else if (item.kind === "uni" && item.event) setEvent(item.event);
     else if (item.kind === "cal" && item.cal) setCalEvent(item.cal);
     else if (item.kind === "training") router.push("/training" as "/");
+    else if (item.kind === "travel") setTravel(item);
     else router.push("/study" as "/");
+  }
+  function moveTask(task: Task, time: string, onlyThisDay: boolean) {
+    tap("success");
+    update((prev) => {
+      if (!onlyThisDay)
+        return { ...prev, tasks: prev.tasks.map((t) => (t.id === task.id ? { ...t, time } : t)) };
+      // One occurrence of a series: skip it there and add a single copy at the new time.
+      const copy: Task = { ...task, id: newId("task"), date: day, time, repeat: "none", skipped: [] };
+      const doneKey = occurrenceKey(task, day);
+      return {
+        ...prev,
+        tasks: [...prev.tasks.map((t) => (t.id === task.id ? { ...t, skipped: [...t.skipped, day] } : t)), copy],
+        done: prev.done[doneKey] ? { ...prev.done, [occurrenceKey(copy, day)]: true } : prev.done,
+      };
+    });
+  }
+  function drop(item: AgendaItem, steps: number) {
+    setDrag(null);
+    if (!item.task || !steps) return;
+    const time = clock(item.start + steps);
+    if (item.task.repeat === "none") moveTask(item.task, time, false);
+    else setSeries({ task: item.task, time });
   }
   function toggle(item: AgendaItem) {
     if (!item.task) return;
@@ -145,22 +288,28 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
             const height = Math.max(26, top(Math.max(item.end, start + 26)) - top(start) - 2);
             const compact = height < 46;
             const past = day < today || (day === today && item.end <= nowMin);
+            const movable = item.kind === "task";
+            const preview = drag?.key === item.key ? drag.start : null;
             return (
-              <Pressable
+              <Draggable
                 key={item.key}
-                accessibilityRole="button"
-                accessibilityLabel={clock(item.start) + " " + item.title}
+                enabled={movable}
+                minDy={top(first * 60) - top(start)}
+                maxDy={top(last * 60 - Math.max(15, item.end - item.start)) - top(start)}
+                onMove={(n) => setDrag({ key: item.key, start: Math.max(0, item.start + n) })}
+                onDrop={(n) => drop(item, n)}
                 onPress={() => open(item)}
-                style={({ pressed }) => ({
+                label={clock(item.start) + " " + item.title}
+                style={{
                   position: "absolute",
                   top: top(start) + 1,
                   height,
                   left: ((col / cols) * 100 + "%") as DimensionValue,
                   width: ((100 / cols) + "%") as DimensionValue,
                   paddingRight: 3,
-                  opacity: item.done ? 0.5 : past ? 0.72 : pressed ? 0.85 : 1,
-                })}
+                }}
               >
+              <View style={{ flex: 1, opacity: preview !== null ? 1 : item.done ? 0.5 : past ? 0.72 : 1 }}>
                 <View
                   style={{
                     flex: 1,
@@ -168,6 +317,8 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
                     borderRadius: 8,
                     borderLeftWidth: 3,
                     borderLeftColor: item.color,
+                    // Travel blocks are dashed so they read as "on the way", not as appointments.
+                    ...(item.kind === "travel" ? { borderWidth: 1, borderStyle: "dashed" as const, borderColor: item.color + "88", borderLeftWidth: 3 } : null),
                     paddingHorizontal: 9,
                     paddingVertical: compact ? 3 : 7,
                     overflow: "hidden",
@@ -190,7 +341,9 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
                     </Text>
                     {!compact && (
                       <View style={[s.row, { gap: 5, marginTop: 3 }]}>
-                        {item.kind === "cal" ? (
+                        {item.kind === "travel" ? (
+                          item.leg?.mode === "walk" ? <Footprints size={11} color={item.color} /> : <TrainFront size={11} color={item.color} />
+                        ) : item.kind === "cal" ? (
                           <CalendarDays size={11} color={item.color} />
                         ) : item.kind === "uni" ? (
                           <GraduationCap size={11} color={item.color} />
@@ -229,7 +382,15 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
                   )}
                   {item.kind === "training" && item.done && <Check size={15} color={item.color} />}
                 </View>
-              </Pressable>
+                {preview !== null && (
+                  <View style={{ position: "absolute", right: 6, top: -12, backgroundColor: item.color, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+                    <Text style={{ color: "#121316", fontWeight: "800", fontSize: 12, fontVariant: ["tabular-nums"] }}>
+                      {clock(preview)}–{clock(preview + (item.end - item.start))}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              </Draggable>
             );
           })}
         </View>
@@ -250,6 +411,71 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
       </Pressable>
       {event && <EventSheet event={event} close={() => setEvent(null)} />}
       {calEvent && <CalEventSheet event={calEvent} close={() => setCalEvent(null)} />}
+      {travel?.leg && (
+        <Sheet
+          title={travel.title}
+          subtitle={"Losgehen " + clock(travel.start) + " · Ankunft " + clock(travel.end)}
+          close={() => setTravel(null)}
+          footer={
+            <>
+              <Button
+                quiet
+                onPress={() => {
+                  setTravel(null);
+                  router.push("/settings");
+                }}
+              >
+                Orte & Wegzeiten
+              </Button>
+              <Button onPress={() => setTravel(null)}>OK</Button>
+            </>
+          }
+        >
+          <View style={s.row}>
+            {travel.leg.mode === "walk" ? <Footprints size={16} color={travel.color} /> : <TrainFront size={16} color={travel.color} />}
+            <Text style={s.body}>
+              {placeName(state, travel.leg.from)} → {placeName(state, travel.leg.to)} · {travel.leg.minutes} Min. {modeLabel[travel.leg.mode]}
+            </Text>
+          </View>
+          {travel.leg.target ? <Text style={s.muted}>Für: {travel.leg.target} (mit {state.transport.buffer} Min. Puffer)</Text> : null}
+          {travel.leg.estimated && (
+            <Text style={[s.micro, { lineHeight: 17 }]}>Zwischen zwei Orten ist die Wegzeit geschätzt (die längere Zeit von zu Hause).</Text>
+          )}
+          {travel.leg.late > 0 && (
+            <View style={[s.notice, { backgroundColor: "#3E2429" }]}>
+              <Text style={[s.body, { color: "#F3A4A9", lineHeight: 21 }]}>
+                ⚠ {travel.leg.late} Min. zu knapp: Der vorherige Termin endet zu spät. Verschiebe einen der Termine oder plane die Lücke anders.
+              </Text>
+            </View>
+          )}
+        </Sheet>
+      )}
+      {series && (
+        <Sheet
+          title="Wiederkehrende Aufgabe verschieben"
+          subtitle={series.task.title + " → " + series.time + " Uhr"}
+          close={() => setSeries(null)}
+          footer={<Button quiet onPress={() => setSeries(null)}>Abbrechen</Button>}
+        >
+          <Button
+            onPress={() => {
+              moveTask(series.task, series.time, true);
+              setSeries(null);
+            }}
+          >
+            Nur am {parseDate(day).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" })}
+          </Button>
+          <Button
+            quiet
+            onPress={() => {
+              moveTask(series.task, series.time, false);
+              setSeries(null);
+            }}
+          >
+            Ganze Serie auf {series.time} Uhr
+          </Button>
+        </Sheet>
+      )}
     </View>
   );
 }

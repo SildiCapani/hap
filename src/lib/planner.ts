@@ -30,6 +30,7 @@ export type Task = {
   icon: string;
   repeat: Repeat;
   skipped: string[];
+  placeId?: string;
 };
 export type Meal = {
   date: string;
@@ -141,6 +142,20 @@ export type Calendar = {
   syncedAt: string;
   error: string;
 };
+export type Place = {
+  id: string;
+  name: string;
+  minutes: number; // travel time from home
+  mode: "transit" | "walk";
+  keywords: string[];
+  lectures: boolean; // lectures from Rapla take place here
+  training: boolean; // workouts take place here
+};
+export type TransportSettings = {
+  enabled: boolean;
+  buffer: number;
+  remind: number; // minutes before leaving, -1 = off
+};
 export type Goal = "bulk" | "cut" | "maintain";
 export type Profile = {
   age: number;
@@ -191,6 +206,8 @@ export type PlannerState = {
   foodLog: FoodEntry[];
   calendars: Calendar[];
   calEvents: CalEvent[];
+  places: Place[];
+  transport: TransportSettings;
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -200,6 +217,7 @@ export const defaultProfile: Profile = {
   goal: "bulk",
   diet: "",
 };
+export const defaultTransport: TransportSettings = { enabled: false, buffer: 5, remind: 5 };
 export const defaultNotify: NotifySettings = {
   enabled: false,
   lead: 10,
@@ -243,6 +261,8 @@ const extras = (): Omit<
   foodLog: [],
   calendars: [],
   calEvents: [],
+  places: [],
+  transport: { ...defaultTransport },
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {
@@ -508,6 +528,7 @@ export function readState(raw: string): PlannerState {
     (value as Record<string, unknown>)[key] ??= defaults[key];
   value.profile = { ...defaultProfile, ...value.profile };
   value.notify = { ...defaultNotify, ...value.notify };
+  value.transport = { ...defaultTransport, ...(value.transport as Partial<TransportSettings>) };
   if (
     typeof value.raplaUrl !== "string" ||
     ![
@@ -515,6 +536,7 @@ export function readState(raw: string): PlannerState {
       value.foodLog,
       value.calendars,
       value.calEvents,
+      value.places,
       value.uniEvents,
       value.exams,
       value.focus,

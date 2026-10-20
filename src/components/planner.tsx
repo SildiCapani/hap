@@ -112,7 +112,8 @@ function CalendarContent() {
           {Array.from({ length: count }, (_, i) => shiftDay(start, i)).map(
             (d) => {
               const items = agenda(state, d),
-                tasks = [...items.allDay, ...items.timed],
+                // Travel blocks only belong in the day view.
+                tasks = [...items.allDay, ...items.timed.filter((i) => i.kind !== "travel")],
                 p = progress(state, d);
               return (
                 <Pressable

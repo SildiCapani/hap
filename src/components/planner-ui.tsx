@@ -24,6 +24,8 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { router, usePathname } from "expo-router";
+// Lets long-press drags in the day view take over from page scrolling.
+import { ScrollView as GestureScrollView } from "react-native-gesture-handler";
 import {
   ArrowRight,
   BookOpen,
@@ -506,7 +508,7 @@ export function Shell({
               </Text>
             </View>
           ) : (
-            <ScrollView
+            <GestureScrollView
               contentContainerStyle={[
                 s.scrollContent,
                 mobile && {
@@ -549,7 +551,7 @@ export function Shell({
                 )}
                 {children}
               </View>
-            </ScrollView>
+            </GestureScrollView>
           )}
           {!wide && (
             <View
@@ -996,9 +998,10 @@ function TaskEditor({
   preset?: Preset;
   close: () => void;
 }) {
-  const { update } = usePlanner();
+  const { state, update } = usePlanner();
   const sheet = useSheetLayout(560);
   const base = task || preset;
+  const [placeId, setPlaceId] = useState(base?.placeId);
   const [title, setTitle] = useState(base?.title || "");
   const [note, setNote] = useState(base?.note || "");
   const [date, setDate] = useState(base?.date || day);
@@ -1034,6 +1037,7 @@ function TaskEditor({
       icon,
       repeat,
       skipped: task?.skipped || [],
+      placeId,
     };
     update((prev) => ({
       ...prev,
@@ -1190,6 +1194,18 @@ function TaskEditor({
                 />
               </View>
             </View>
+            {state.transport.enabled && state.places.length > 0 && (
+              <View>
+                <Text style={s.label}>Ort (für die Wegplanung)</Text>
+                <View style={s.wrap}>
+                  <Chip label="Kein Weg" active={!placeId} onPress={() => setPlaceId(undefined)} />
+                  <Chip label="Zuhause" active={placeId === "home"} onPress={() => setPlaceId("home")} />
+                  {state.places.map((p) => (
+                    <Chip key={p.id} label={p.name + " · " + p.minutes + " Min."} active={placeId === p.id} onPress={() => setPlaceId(p.id)} />
+                  ))}
+                </View>
+              </View>
+            )}
             <View>
               <Text style={s.label}>Wiederholung</Text>
               <View style={s.wrap}>

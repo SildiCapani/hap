@@ -9,12 +9,13 @@ import {
 } from "./planner.ts";
 import { minutes, type UniEvent } from "./rapla.ts";
 import type { CalEvent } from "./ics.ts";
+import { modeLabel, placeName, travelPlan, type Leg } from "./transport.ts";
 import { clock, examKinds, focusPick, hoursLabel, upcomingExams } from "./study.ts";
 import { loggedOn, workoutsFor } from "./training.ts";
 
 export type AgendaItem = {
   key: string;
-  kind: "task" | "uni" | "training" | "exam" | "cal";
+  kind: "task" | "uni" | "training" | "exam" | "cal" | "travel";
   title: string;
   start: number;
   end: number;
@@ -27,7 +28,9 @@ export type AgendaItem = {
   workout?: Workout;
   exam?: Exam;
   cal?: CalEvent;
+  leg?: Leg;
 };
+export const travelColor = { color: "#8FA3C8", pale: "#8FA3C81F" };
 
 export const uniColor = { color: "#B9A2F2", pale: "#2A2440" };
 export const examColor = { color: "#F07B83", pale: "#3D2229" };
@@ -114,6 +117,22 @@ export function agenda(state: PlannerState, day: string) {
       exam,
     };
     (exam.time && exam.kind !== "assignment" ? timed : allDay).push(item);
+  }
+  for (const leg of travelPlan(state, day)) {
+    const home = leg.to === "home";
+    timed.push({
+      key: leg.key,
+      kind: "travel",
+      title: home ? "Heimweg" : "Losgehen → " + placeName(state, leg.to),
+      start: leg.depart,
+      end: leg.depart + leg.minutes,
+      ...(leg.late ? { color: "#FF6B78", pale: "#FF6B7826" } : travelColor),
+      sub:
+        modeLabel[leg.mode] + " · " + leg.minutes + " Min." + (leg.estimated ? " (geschätzt)" : "") +
+        (leg.late ? " · ⚠ " + leg.late + " Min. zu knapp" : home ? "" : " · für " + leg.target),
+      done: false,
+      leg,
+    });
   }
   timed.sort((a, b) => a.start - b.start || b.end - a.end);
   return { timed, allDay };

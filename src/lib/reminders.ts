@@ -41,6 +41,18 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
     const { timed } = agenda(state, day);
     for (const item of timed) {
       if (item.done) continue;
+      if (item.kind === "travel") {
+        const r = state.transport.remind;
+        if (r < 0 || !item.leg || item.leg.to === "home") continue;
+        list.push({
+          id: item.key + ":" + day,
+          at: at(day, item.start - r),
+          title: (r ? "🚆 In " + r + " Min. losgehen" : "🚆 Jetzt losgehen") + " – " + item.title.replace("Losgehen → ", ""),
+          body: item.sub,
+          url: "/",
+        });
+        continue;
+      }
       const calLead = item.cal ? state.calendars.find((c) => c.id === item.cal?.calId)?.lead || 0 : 0;
       if (item.kind === "cal" && !calLead) continue;
       const lead =

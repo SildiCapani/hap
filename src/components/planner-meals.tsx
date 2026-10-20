@@ -8,6 +8,7 @@ import { goals } from "@/lib/training";
 import type { Goal } from "@/lib/planner";
 import { FoodTracker } from "./food";
 import { CalendarSettings } from "./calendar-settings";
+import { TransportSettings } from "./transport-settings";
 import { router } from "expo-router";
 import {
   ArrowDownToLine,
@@ -692,6 +693,7 @@ function SettingsContent() {
         <CloudSettings />
         <UniSettings />
         <CalendarSettings />
+        <TransportSettings />
         <NotifySettings />
         <View style={[s.card, { padding: 26, gap: 14 }]}>
           <View style={s.row}>

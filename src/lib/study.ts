@@ -6,6 +6,7 @@ import {
   type PlannerState,
 } from "./planner.ts";
 import { minutes } from "./rapla.ts";
+import { travelPlan } from "./transport.ts";
 
 export const examKinds = {
   exam: { label: "Klausur", color: "#F07B83" },
@@ -99,6 +100,8 @@ export function freeSlots(state: PlannerState, day: string, from = 8 * 60, to = 
     ...state.calEvents
       .filter((e) => e.date === day && !e.allDay)
       .map((e) => ({ start: minutes(e.start), end: minutes(e.end) })),
+    // Time on the road is not free for studying either.
+    ...travelPlan(state, day).map((l) => ({ start: l.depart, end: l.depart + l.minutes })),
   ].sort((a, b) => a.start - b.start);
   const slots: Slot[] = [];
   let cursor = from;

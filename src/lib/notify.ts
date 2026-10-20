@@ -77,8 +77,10 @@ async function apply(list: Reminder[]) {
 }
 
 // On the web this uses the Vibration API where the browser supports it.
-export function tap(kind: "light" | "medium" | "success" | "heavy" = "light") {
-  void (kind === "success"
+export function tap(kind: "light" | "medium" | "success" | "heavy" | "select" = "light") {
+  void (kind === "select"
+    ? Haptics.selectionAsync()
+    : kind === "success"
     ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     : Haptics.impactAsync(
         kind === "heavy"
