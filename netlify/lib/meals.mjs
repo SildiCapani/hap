@@ -96,6 +96,7 @@ export async function generatePlan(
   weekStart,
   env = process.env,
   fetcher = fetch,
+  profile = "",
 ) {
   for (const key of ["OPENAI_API_KEY", "OPENAI_MODEL", "MEAL_PLAN_PROMPT"])
     if (!env[key]?.trim()) throw new Error("Missing configuration: " + key);
@@ -116,7 +117,9 @@ export async function generatePlan(
         " bis " +
         shift(weekStart, 6) +
         ". Je ein konkretes Gericht mit Portionsangabe pro Frühstück, Mittagessen und Abendessen. Ergänze eine zusammengefasste Einkaufsliste mit passenden Mengen für alle Mahlzeiten; doppelte Zutaten zusammenführen. Keine erfundenen persönlichen Vorlieben oder medizinischen Angaben.",
-      input: env.MEAL_PLAN_PROMPT,
+      input: profile
+        ? env.MEAL_PLAN_PROMPT + "\n\n" + profile
+        : env.MEAL_PLAN_PROMPT,
       text: {
         format: {
           type: "json_schema",

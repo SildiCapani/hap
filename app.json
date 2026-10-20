@@ -36,6 +36,12 @@
           "image": "./assets/images/logo.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#F07B83"
+        }
       ]
     ],
     "experiments": {

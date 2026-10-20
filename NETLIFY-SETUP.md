@@ -47,6 +47,33 @@ eingetragen. Eigene Bearbeitungen und Löschungen werden nicht beim nächsten Ab
 Die OpenAI-API und Netlify können nutzungsabhängige Kosten verursachen.
 Es erfolgt kein wöchentliches Deployment; nur gespeicherte Inhalte ändern sich.
 
+## Stundenplan (DHBW Rapla)
+
+Unter Einstellungen den persönlichen Rapla-Link einfügen. Rapla bietet für diese
+Links keinen iCal-Export, darum liest Hap die Wochenansicht (bis zu 20 Wochen ab
+zwei Wochen in der Vergangenheit) und erkennt Vorlesungen, Räume, Dozierende und
+die Klausurwoche. Die native App ruft Rapla direkt ab. Im Browser blockiert Rapla
+direkte Abrufe (CORS), deshalb läuft der Import dort über die Function
+`uni-calendar`, die ausschließlich Links von `rapla.dhbw.de` annimmt. Der Link
+bleibt nur auf dem Gerät gespeichert und wird nicht in Netlify hinterlegt.
+Hap lädt den Plan alle 6 Stunden und bei der Rückkehr zur App neu.
+
+## Profil für die Essensplanung
+
+Profil (Alter, Größe, Gewicht, Ziel, Vorlieben) und Trainingstage werden mit dem
+App-Zugang an die Function `meal-profile` gesendet und in Netlify Blobs gespeichert.
+Die wöchentliche Erstellung hängt diesen Text an MEAL_PLAN_PROMPT an, damit
+Kalorien, Protein und Trainingstage berücksichtigt werden.
+
+## Benachrichtigungen
+
+In der nativen App plant Hap lokale Erinnerungen für die nächsten 4 Tage
+(Vorlesungen, Aufgaben, Training, Klausuren/Abgaben, Morgen-Briefing,
+Tagesabschluss, Ende einer Fokusrunde). Dafür ist ein Development Build nötig
+(`npx expo run:android` / `npx expo run:ios` oder `eas build --profile development`),
+in Expo Go funktionieren lokale Erinnerungen ebenfalls. Im Browser gibt es
+Erinnerungen nur, solange Hap in einem Tab geöffnet ist.
+
 ## Speicherung und Grenzen
 
 Aufgaben und Häkchen werden lokal auf dem jeweiligen Gerät gespeichert. Das ist
@@ -69,5 +96,6 @@ Laden der Website ohne Internet ist noch nicht als Offline-PWA eingerichtet.
 - npm run web
 
 Die reine Expo-Vorschau enthält keine Netlify-Functions. Ohne eingerichtetes Netlify
-ist der Essensplan daher bewusst leer. Die Backend-Tests verwenden simulierte
+ist der Essensplan daher bewusst leer, und der Rapla-Import im Browser braucht
+`npx netlify dev` (in der nativen App funktioniert er direkt). Die Backend-Tests verwenden simulierte
 API-Antworten; ein echter KI-Aufruf erfordert die obigen Zugangsdaten.

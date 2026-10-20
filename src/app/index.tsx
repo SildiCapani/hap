@@ -1,1 +1,1 @@
-export { TodayScreen as default } from "@/components/planner";
+export { TodayScreen as default } from "@/components/today";

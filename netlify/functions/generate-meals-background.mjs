@@ -22,7 +22,13 @@ export default async function handler(request) {
   );
   if (!lock.modified) return json({ status: "already-running" });
   try {
-    const plan = await generatePlan(week);
+    const profile = await store.get("profile", { type: "json" });
+    const plan = await generatePlan(
+      week,
+      process.env,
+      fetch,
+      typeof profile?.text === "string" ? profile.text : "",
+    );
     const result = await store.setJSON(key, plan, { onlyIfNew: true });
     if (result.modified) await store.setJSON("latest", plan);
     console.info("Meal plan stored for " + week);

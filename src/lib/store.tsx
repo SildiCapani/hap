@@ -11,12 +11,20 @@ import {
 import { AppState, Platform } from "react-native";
 import {
   createState,
+  dateKey,
+  finishFocus,
   importMeals,
+  monday,
   readState,
+  shiftDay,
   storageKey,
   validMealPlan,
   type PlannerState,
 } from "./planner";
+import { parseRapla, raplaWeeksUrl, type UniEvent } from "./rapla";
+import { reminders } from "./reminders";
+import { schedule } from "./notify";
+import { profileText } from "./training";
 
 type Store = {
   state: PlannerState;
@@ -28,6 +36,10 @@ type Store = {
   syncMeals: () => Promise<void>;
   syncing: boolean;
   mealStatus: string;
+  syncUni: () => Promise<void>;
+  uniSyncing: boolean;
+  uniStatus: string;
+  pushProfile: () => Promise<string>;
 };
 const Context = createContext<Store | null>(null);
 export function PlannerProvider({ children }: { children: ReactNode }) {
@@ -37,6 +49,9 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [mealStatus, setMealStatus] = useState("");
+  const [uniSyncing, setUniSyncing] = useState(false);
+  const [uniStatus, setUniStatus] = useState("");
+  const uniFlight = useRef(false);
   const inFlight = useRef(false);
   const credentials = useRef("");
   useEffect(() => {
@@ -191,6 +206,152 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       if (Platform.OS === "web") window.removeEventListener("focus", refresh);
     };
   }, [ready, state.accessToken, syncMeals]);
+  const syncUni = useCallback(async () => {
+    if (!ready || uniFlight.current) return;
+    const link = state.raplaUrl;
+    if (!link) {
+      setUniStatus("Trage deinen Rapla-Link in den Einstellungen ein.");
+      return;
+    }
+    uniFlight.current = true;
+    setUniSyncing(true);
+    setUniStatus("");
+    // Two weeks back keeps the recent past visible; Rapla serves at most 20 weeks.
+    const from = shiftDay(monday(dateKey()), -14);
+    try {
+      let events: UniEvent[];
+      if (Platform.OS === "web") {
+        const base = state.apiUrl.replace(/\/$/, "");
+        const response = await fetch(base + "/.netlify/functions/uni-calendar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: link, from, weeks: 20 }),
+          signal: AbortSignal.timeout(30000),
+        });
+        if (response.status === 404)
+          throw new Error(
+            "Der Stundenplan-Import läuft im Browser über Netlify. Lokal bitte „npx netlify dev“ nutzen oder die App am Handy öffnen.",
+          );
+        if (!response.ok)
+          throw new Error("Rapla ist gerade nicht erreichbar. Prüfe deinen Link.");
+        events = ((await response.json()) as { events: UniEvent[] }).events;
+      } else {
+        const response = await fetch(raplaWeeksUrl(link, from, 20), {
+          signal: AbortSignal.timeout(30000),
+        });
+        if (!response.ok)
+          throw new Error("Rapla ist gerade nicht erreichbar. Prüfe deinen Link.");
+        events = parseRapla(await response.text(), from);
+      }
+      if (!Array.isArray(events)) throw new Error("Ungültige Antwort von Rapla.");
+      update((prev) =>
+        prev.raplaUrl !== link
+          ? prev
+          : {
+              ...prev,
+              uniEvents: [
+                ...prev.uniEvents.filter((e) => e.date < from),
+                ...events,
+              ],
+              uniSynced: new Date().toISOString(),
+            },
+      );
+      setUniStatus(
+        events.length
+          ? events.length + " Termine aus Rapla geladen."
+          : "Rapla hat keine Termine geliefert. Ist der Link richtig?",
+      );
+    } catch (e) {
+      setUniStatus(
+        e instanceof Error && e.name !== "TypeError"
+          ? e.message
+          : "Keine Verbindung zu Rapla. Dein letzter Stundenplan bleibt gespeichert.",
+      );
+    } finally {
+      uniFlight.current = false;
+      setUniSyncing(false);
+    }
+  }, [ready, state.raplaUrl, state.apiUrl, update]);
+  useEffect(() => {
+    if (!ready || !state.raplaUrl) return;
+    const stale = () =>
+      !state.uniSynced ||
+      Date.now() - new Date(state.uniSynced).valueOf() > 6 * 3600 * 1000;
+    const startup = setTimeout(() => {
+      if (stale()) void syncUni();
+    }, 0);
+    const subscription = AppState.addEventListener("change", (value) => {
+      if (value === "active" && stale()) void syncUni();
+    });
+    return () => {
+      clearTimeout(startup);
+      subscription.remove();
+    };
+  }, [ready, state.raplaUrl, state.uniSynced, syncUni]);
+  // A running focus round completes even when the focus screen is closed.
+  const focusEnd =
+    state.activeFocus && state.activeFocus.pausedLeft === null
+      ? state.activeFocus.endsAt
+      : 0;
+  const focusId = state.activeFocus?.startedAt;
+  useEffect(() => {
+    if (!ready || !focusEnd) return;
+    const timer = setTimeout(
+      () =>
+        update((prev) => {
+          const active = prev.activeFocus;
+          return active &&
+            active.startedAt === focusId &&
+            active.pausedLeft === null
+            ? finishFocus(prev, active.minutes)
+            : prev;
+        }),
+      Math.max(0, focusEnd - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [ready, focusEnd, focusId, update]);
+  // Reminders are recomputed shortly after any change to the plan.
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setTimeout(() => {
+      void schedule(reminders(state)).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [ready, state]);
+  const pushProfile = useCallback(async () => {
+    if (!state.accessToken)
+      return "Profil lokal gespeichert. Für die Essensplanung den App-Zugang eintragen.";
+    try {
+      const base = state.apiUrl.replace(/\/$/, "");
+      const response = await fetch(base + "/.netlify/functions/meal-profile", {
+        method: "PUT",
+        headers: {
+          Authorization: "Bearer " + state.accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ profile: profileText(state) }),
+        signal: AbortSignal.timeout(15000),
+      });
+      return response.ok
+        ? "Profil gespeichert. Der nächste Essensplan richtet sich danach."
+        : "Profil lokal gespeichert. Netlify hat es nicht angenommen (" +
+            response.status +
+            ").";
+    } catch {
+      return "Profil lokal gespeichert. Netlify ist gerade nicht erreichbar.";
+    }
+  }, [state]);
+  // Keep the meal planning profile on Netlify in sync with goals and training days.
+  const profileKey = ready && state.accessToken ? profileText(state) : "";
+  const sentProfile = useRef("");
+  useEffect(() => {
+    if (!profileKey || profileKey === sentProfile.current) return;
+    const timer = setTimeout(() => {
+      sentProfile.current = profileKey;
+      void pushProfile();
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [profileKey, pushProfile]);
   return (
     <Context.Provider
       value={{
@@ -203,6 +364,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         syncing,
         mealStatus,
         syncMeals,
+        syncUni,
+        uniSyncing,
+        uniStatus,
+        pushProfile,
       }}
     >
       {children}

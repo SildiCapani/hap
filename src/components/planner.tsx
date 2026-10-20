@@ -7,20 +7,22 @@ import {
   type DimensionValue,
 } from "react-native";
 import {
+  Brain,
   Check,
   CheckCheck,
   ChevronLeft,
   ChevronRight,
+  Dumbbell,
   Flame,
   Plus,
-  ShieldCheck,
   Sparkles,
   Sprout,
-  Sun,
   Trophy,
 } from "lucide-react-native";
 import {
-  categories,
+  dateKey,
+  dayXp,
+  levelFor,
   monday,
   occurrenceKey,
   parseDate,
@@ -28,135 +30,17 @@ import {
   shiftDay,
   streak,
   tasksFor,
-  dateKey,
+  totalXp,
 } from "@/lib/planner";
 import { usePlanner } from "@/lib/store";
-import {
-  Button,
-  C,
-  DaySide,
-  Heading,
-  Pill,
-  Shell,
-  TaskList,
-  useEditor,
-  useToday,
-  WeekStrip,
-  s,
-} from "./planner-ui";
+import { agenda } from "@/lib/agenda";
+import { hoursLabel, studyStreak } from "@/lib/study";
+import { trainingStreak, weekSummary } from "@/lib/training";
+import { DayTimeline } from "./day-timeline";
+import { TimePicture, weekTime } from "./charts";
+import { Button, C, Heading, Shell, useEditor, useToday, s } from "./planner-ui";
 export { MealsScreen, SettingsScreen } from "./planner-meals";
 
-function TodayContent() {
-  const { state } = usePlanner();
-  const today = useToday();
-  const [selected, setSelected] = useState<string | null>(null);
-  const day = selected || today;
-  const p = progress(state, day);
-  const { width } = useWindowDimensions();
-  const side = width >= 1180;
-  const greeting =
-    new Date().getHours() < 11
-      ? "Guten Morgen"
-      : new Date().getHours() < 18
-        ? "Hallo"
-        : "Guten Abend";
-  return (
-    <>
-      <View style={[s.hero, width < 680 && { padding: 24 }]}>
-        <View style={{ flex: 1 }}>
-          <View style={s.heroBadge}>
-            <Sun size={13} color={C.lime} />
-            <Text style={{ color: "#EBC2CC", fontSize: 10, letterSpacing: 1 }}>
-              EIN GUTER TAG BEGINNT HIER
-            </Text>
-          </View>
-          <Text style={[s.heroTitle, width < 680 && { fontSize: 25 }]}>
-            {greeting}
-            {state.name ? ", " + state.name : ""}.{"\n"}Mach heute zu deinem
-            Tag.
-          </Text>
-          <Text style={s.heroText}>
-            Ein Schritt nach dem anderen. Du hast das.
-          </Text>
-          <View style={[s.row, { marginTop: 22, gap: 16 }]}>
-            <View style={s.row}>
-              <Flame size={16} color={C.lime} />
-              <Text style={s.heroSmall}>
-                {streak(state, today)} Tage in Folge
-              </Text>
-            </View>
-            <View
-              style={{ height: 14, width: 1, backgroundColor: "#7F4553" }}
-            />
-            <Text style={s.heroSmall}>
-              {progress(state, today).done * 20} XP heute
-            </Text>
-          </View>
-        </View>
-      </View>
-      <View style={[s.columns, !side && { flexDirection: "column" }]}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={[s.sectionHeading, { marginBottom: 15 }]}>
-            <View style={s.row}>
-              <Text style={s.h2}>
-                {parseDate(day).toLocaleDateString("de-DE", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </Text>
-              <Pill>
-                {day === today
-                  ? "Heute"
-                  : parseDate(day).toLocaleDateString("de-DE", {
-                      day: "numeric",
-                      month: "numeric",
-                    })}
-              </Pill>
-            </View>
-            {day !== today && (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setSelected(null)}
-              >
-                <Text style={s.link}>Zu heute</Text>
-              </Pressable>
-            )}
-          </View>
-          <WeekStrip day={day} select={setSelected} />
-          {p.perfect && (
-            <View style={s.celebration}>
-              <CheckCheck size={21} color={C.green} />
-              <Text style={{ color: C.green, flex: 1, fontWeight: "600" }}>
-                {p.done}/{p.total} – Tagesziel erreicht! +{p.done * 20} XP
-              </Text>
-              <Sparkles size={20} color="#E4B19B" />
-            </View>
-          )}
-          <TaskList day={day} />
-          <View style={s.footerNote}>
-            <ShieldCheck size={13} color={C.muted} />
-            <Text style={s.micro}>
-              Deine Änderungen bleiben auf diesem Gerät gespeichert.
-            </Text>
-          </View>
-        </View>
-        <View style={{ width: side ? 290 : "100%" }}>
-          <DaySide day={day} />
-        </View>
-      </View>
-    </>
-  );
-}
-export function TodayScreen() {
-  return (
-    <Shell
-      title="Dein Tag im Überblick"
-      subtitle="Weniger im Kopf. Mehr Raum fürs Leben."
-    >
-      <TodayContent />
-    </Shell>
-  );
-}
 function CalendarContent() {
   const { state } = usePlanner();
   const today = useToday();
@@ -227,7 +111,8 @@ function CalendarContent() {
         <View style={s.calendarGrid}>
           {Array.from({ length: count }, (_, i) => shiftDay(start, i)).map(
             (d) => {
-              const tasks = tasksFor(state, d),
+              const items = agenda(state, d),
+                tasks = [...items.allDay, ...items.timed],
                 p = progress(state, d);
               return (
                 <Pressable
@@ -266,44 +151,41 @@ function CalendarContent() {
                     </Text>
                   </View>
                   {width >= 680 ? (
-                    tasks.slice(0, 2).map((t) => (
+                    tasks.slice(0, 3).map((t) => (
                       <View
-                        key={t.id}
-                        style={[
-                          s.calendarTask,
-                          { backgroundColor: categories[t.category].pale },
-                        ]}
+                        key={t.key}
+                        style={[s.calendarTask, { backgroundColor: t.pale }]}
                       >
                         <Text
                           numberOfLines={1}
-                          style={{
-                            color: categories[t.category].color,
-                            fontSize: 10,
-                          }}
+                          style={{ color: t.color, fontSize: 10 }}
                         >
-                          {state.done[occurrenceKey(t, d)] ? "✓ " : ""}
-                          {t.time} {t.title}
+                          {t.done ? "✓ " : ""}
+                          {t.start || t.end
+                            ? String(Math.floor(t.start / 60)).padStart(2, "0") +
+                              ":" +
+                              String(t.start % 60).padStart(2, "0") +
+                              " "
+                            : ""}
+                          {t.title}
                         </Text>
                       </View>
                     ))
                   ) : (
                     <View style={[s.row, { gap: 3, marginTop: 5 }]}>
-                      {Array.from(new Set(tasks.map((t) => t.category))).map(
-                        (c) => (
+                      {Array.from(new Set(tasks.map((t) => t.color)))
+                        .slice(0, 4)
+                        .map((c) => (
                           <View
                             key={c}
-                            style={[
-                              s.dayDot,
-                              { backgroundColor: categories[c].color },
-                            ]}
+                            style={[s.dayDot, { backgroundColor: c }]}
                           />
-                        ),
-                      )}
+                        ))}
                     </View>
                   )}
-                  {width >= 680 && tasks.length > 2 && (
+                  {width >= 680 && tasks.length > 3 && (
                     <Text style={[s.micro, { fontSize: 9 }]}>
-                      +{tasks.length - 2} weitere
+                      +{tasks.length - 3} weitere
                     </Text>
                   )}
                   {p.perfect && (
@@ -331,7 +213,9 @@ function CalendarContent() {
           Planen
         </Button>
       </View>
-      <TaskList day={day} />
+      <View style={{ marginTop: 16 }}>
+        <DayTimeline day={day} />
+      </View>
     </>
   );
 }
@@ -357,8 +241,13 @@ export function ProgressScreen() {
         (t) => occurrenceKey(t, key.slice(-10)) === key,
       ),
   ).length;
-  const xp = completed * 20;
-  const level = Math.floor(xp / 200) + 1;
+  const xp = totalXp(state, today);
+  const lvl = levelFor(xp);
+  const level = lvl.level;
+  const week = weekTime(state, today);
+  const weekFocus = week.reduce((n, d) => n + d.focus, 0);
+  const weekUni = week.reduce((n, d) => n + d.uni, 0);
+  const training = weekSummary(state, today);
   return (
     <Shell
       title="Kleine Schritte zählen"
@@ -378,6 +267,16 @@ export function ProgressScreen() {
             value: String(completed),
             icon: CheckCheck,
           },
+          {
+            label: "LERNSERIE (TAGE)",
+            value: String(studyStreak(state, today)),
+            icon: Brain,
+          },
+          {
+            label: "TRAININGS-WOCHEN",
+            value: String(trainingStreak(state, today)),
+            icon: Dumbbell,
+          },
         ].map((item) => (
           <View key={item.label} style={[s.card, s.statCard]}>
             <item.icon size={24} color={C.green} />
@@ -387,13 +286,15 @@ export function ProgressScreen() {
         ))}
       </View>
       <View style={[s.card, { padding: 27, marginTop: 24 }]}>
-        <Heading detail={String(xp % 200) + "/200 XP bis Level " + (level + 1)}>
+        <Heading
+          detail={lvl.into + "/" + lvl.need + " XP bis Level " + (level + 1)}
+        >
           Du wächst mit jedem Tag
         </Heading>
         <View style={s.progressTrack}>
           <View
             style={{
-              width: ((xp % 200) / 2 + "%") as DimensionValue,
+              width: ((lvl.into / lvl.need) * 100 + "%") as DimensionValue,
               height: "100%",
               backgroundColor: C.green,
               borderRadius: 9,
@@ -401,8 +302,8 @@ export function ProgressScreen() {
           />
         </View>
         <Text style={[s.muted, { marginTop: 12 }]}>
-          Jede erledigte Aufgabe bringt 20 XP. Ein Häkchen zurücknehmen zieht
-          die XP wieder ab.
+          Aufgaben bringen 10–60 XP je nach Dauer, jede Fokusminute 1 XP, jedes
+          Training 60 XP. Heute: +{dayXp(state, today)} XP.
         </Text>
       </View>
       <View style={[s.card, { padding: 27, marginTop: 24 }]}>
@@ -449,6 +350,17 @@ export function ProgressScreen() {
             );
           })}
         </View>
+      </View>
+      <View style={[s.card, { padding: 27, marginTop: 24, gap: 14 }]}>
+        <Heading detail="Montag bis Sonntag">Wochenrückblick</Heading>
+        <Text style={[s.body, { color: C.muted, lineHeight: 22 }]}>
+          {hoursLabel(weekUni)} Vorlesung · {hoursLabel(weekFocus)} Fokuszeit ·{" "}
+          {training.done}/{training.planned} Trainings
+          {weekFocus < 300
+            ? ". Tipp: Plane zwei feste Fokusblöcke pro Tag zwischen den Vorlesungen."
+            : ". Starke Woche – weiter so!"}
+        </Text>
+        <TimePicture state={state} today={today} />
       </View>
       <View style={[s.gentleCard, { marginTop: 24 }]}>
         <Trophy size={28} color="#D5AD83" />

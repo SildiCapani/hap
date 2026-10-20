@@ -1,9 +1,18 @@
 import { useState } from "react";
 import { Platform, Pressable, Share, Switch, Text, View } from "react-native";
+import { askPermission, tap } from "@/lib/notify";
+import { validRaplaUrl } from "@/lib/rapla";
+import { goals, nutrition, workoutsFor } from "@/lib/training";
+import type { Goal } from "@/lib/planner";
+import { Bar } from "./charts";
 import { router } from "expo-router";
 import {
   ArrowDownToLine,
+  Beef,
+  Bell,
   Check,
+  GraduationCap,
+  User,
   Coffee,
   Leaf,
   RefreshCw,
@@ -18,13 +27,162 @@ import { usePlanner } from "@/lib/store";
 import {
   Button,
   C,
+  Chip,
   Field,
   Heading,
   Pill,
+  Sheet,
   Shell,
   useToday,
   s,
 } from "./planner-ui";
+
+export function ProfileSheet({ close }: { close: () => void }) {
+  const { state, update, pushProfile } = usePlanner();
+  const p = state.profile;
+  const [age, setAge] = useState(String(p.age));
+  const [height, setHeight] = useState(String(p.height));
+  const [weight, setWeight] = useState(String(p.weight));
+  const [goal, setGoal] = useState<Goal>(p.goal);
+  const [male, setMale] = useState(p.male);
+  const [diet, setDiet] = useState(p.diet);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  function save() {
+    const a = Number(age), h = Number(height), w = Number(weight.replace(",", "."));
+    if (!(a >= 14 && a <= 99) || !(h >= 120 && h <= 230) || !(w >= 35 && w <= 250))
+      return setMessage("Bitte realistische Werte für Alter, Größe und Gewicht eingeben.");
+    // The store sends the profile to the meal planning on its own.
+    update((prev) => ({ ...prev, profile: { age: a, height: h, weight: w, goal, male, diet: diet.trim() } }));
+    tap("success");
+    close();
+  }
+  return (
+    <Sheet
+      title="Dein Profil"
+      subtitle="Für Kalorien- und Proteinziele und deinen Essensplan."
+      close={close}
+      footer={
+        <>
+          <Button quiet onPress={close}>Abbrechen</Button>
+          <Button icon={Check} disabled={busy} onPress={save}>Speichern</Button>
+        </>
+      }
+    >
+      <View style={s.row}>
+        <View style={{ flex: 1 }}>
+          <Field label="Alter" value={age} onChangeText={setAge} keyboardType="numeric" maxLength={2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Field label="Größe (cm)" value={height} onChangeText={setHeight} keyboardType="numeric" maxLength={3} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Field label="Gewicht (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" maxLength={5} />
+        </View>
+      </View>
+      <View>
+        <Text style={s.label}>Geschlecht (für den Grundumsatz)</Text>
+        <View style={s.wrap}>
+          <Chip label="Männlich" active={male} onPress={() => setMale(true)} />
+          <Chip label="Weiblich" active={!male} onPress={() => setMale(false)} />
+        </View>
+      </View>
+      <View>
+        <Text style={s.label}>Ziel</Text>
+        <View style={s.wrap}>
+          {(Object.keys(goals) as Goal[]).map((g) => (
+            <Chip key={g} label={goals[g].label} active={goal === g} onPress={() => setGoal(g)} />
+          ))}
+        </View>
+      </View>
+      <Field
+        label="Vorlieben & No-Gos fürs Essen"
+        value={diet}
+        onChangeText={setDiet}
+        multiline
+        placeholder="z. B. kein Fisch, wenig Zeit unter der Woche, Budget 60 €"
+        maxLength={400}
+      />
+      {message ? <Text style={s.formError}>{message}</Text> : null}
+      <Pressable
+        onPress={() => {
+          setBusy(true);
+          void pushProfile().then((m) => {
+            setMessage(m);
+            setBusy(false);
+          });
+        }}
+      >
+        <Text style={s.link}>{busy ? "Wird gesendet …" : "Gespeichertes Profil jetzt an die Essensplanung senden"}</Text>
+      </Pressable>
+    </Sheet>
+  );
+}
+
+function NutritionCard() {
+  const { state, update } = usePlanner();
+  const today = useToday();
+  const [profile, setProfile] = useState(false);
+  const training = workoutsFor(state, today).length > 0;
+  const t = nutrition(state.profile, training);
+  const protein = state.protein[today] || 0;
+  return (
+    <View style={[s.card, { padding: 22, gap: 16, marginBottom: 22 }]}>
+      <View style={s.sectionHeading}>
+        <View style={s.row}>
+          <Beef size={18} color={C.green} />
+          <Text style={s.h3}>Deine Ziele heute</Text>
+          <Pill>{training ? "Trainingstag" : "Ruhetag"}</Pill>
+        </View>
+        <Pressable accessibilityRole="button" onPress={() => setProfile(true)} style={s.row}>
+          <User size={14} color={C.green} />
+          <Text style={s.link}>{goals[state.profile.goal].label} · {state.profile.weight} kg</Text>
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+        {[
+          { label: "KALORIEN", value: t.kcal + "", unit: "kcal" },
+          { label: "PROTEIN", value: t.protein + "", unit: "g" },
+          { label: "KOHLENHYDRATE", value: t.carbs + "", unit: "g" },
+          { label: "FETT", value: t.fat + "", unit: "g" },
+        ].map((x) => (
+          <View key={x.label} style={{ flexGrow: 1, flexBasis: 120, backgroundColor: "#202127", borderRadius: 12, padding: 14 }}>
+            <Text style={s.eyebrow}>{x.label}</Text>
+            <Text style={{ color: C.ink, fontSize: 22, fontWeight: "700", marginTop: 6 }}>
+              {x.value} <Text style={s.micro}>{x.unit}</Text>
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View style={{ gap: 8 }}>
+        <View style={s.sectionHeading}>
+          <Text style={s.body}>
+            Protein heute: <Text style={{ fontWeight: "700" }}>{protein} g</Text> / {t.protein} g
+          </Text>
+          {protein >= t.protein && <Text style={{ color: "#98C5A9", fontSize: 12 }}>Ziel erreicht 💪</Text>}
+        </View>
+        <Bar value={protein / t.protein} color="#E5B073" />
+        <View style={s.wrap}>
+          {[10, 20, 30, 40].map((g) => (
+            <Chip
+              key={g}
+              label={"+" + g + " g"}
+              active={false}
+              onPress={() => update((prev) => ({ ...prev, protein: { ...prev.protein, [today]: (prev.protein[today] || 0) + g } }))}
+            />
+          ))}
+          {protein > 0 && (
+            <Chip label="Zurücksetzen" active={false} onPress={() => update((prev) => ({ ...prev, protein: { ...prev.protein, [today]: 0 } }))} />
+          )}
+        </View>
+      </View>
+      <Text style={[s.micro, { lineHeight: 18 }]}>
+        Richtwerte nach Mifflin-St-Jeor mit moderatem Aktivitätsfaktor – keine medizinische Beratung. Dein Profil fließt in den nächsten KI-Essensplan ein.
+      </Text>
+      {profile && <ProfileSheet close={() => setProfile(false)} />}
+    </View>
+  );
+}
 
 function MealsContent() {
   const { state, update, syncing, mealStatus, syncMeals } = usePlanner();
@@ -47,6 +205,7 @@ function MealsContent() {
         </View>
         <Utensils size={48} color="#CC929F" strokeWidth={1.1} />
       </View>
+      <NutritionCard />
       <View
         style={[
           s.sectionHeading,
@@ -250,8 +409,147 @@ export function MealsScreen() {
     </Shell>
   );
 }
+function UniSettings() {
+  const { state, update, syncUni, uniSyncing, uniStatus } = usePlanner();
+  const [link, setLink] = useState(state.raplaUrl);
+  const [message, setMessage] = useState("");
+  return (
+    <View style={[s.card, { padding: 26, gap: 18 }]}>
+      <View style={s.row}>
+        <GraduationCap size={20} color="#B9A2F2" />
+        <Heading>Stundenplan (DHBW Rapla)</Heading>
+      </View>
+      <Text style={[s.body, { color: C.muted, lineHeight: 22 }]}>
+        Füge deinen persönlichen Rapla-Link ein. Vorlesungen, Räume und die Klausurwoche erscheinen dann automatisch in deinem Tag. Der Link bleibt nur auf diesem Gerät.
+      </Text>
+      <Field
+        label="Rapla-Link"
+        value={link}
+        onChangeText={setLink}
+        placeholder="https://rapla.dhbw.de/rapla/internal_calendar?key=…"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      {message || uniStatus ? <Text style={s.micro}>{message || uniStatus}</Text> : null}
+      <View style={[s.row, { flexWrap: "wrap" }]}>
+        <Button
+          icon={Check}
+          disabled={uniSyncing}
+          onPress={() => {
+            const value = link.trim();
+            if (value && !validRaplaUrl(value))
+              return setMessage("Das ist kein gültiger Link von rapla.dhbw.de.");
+            setMessage("");
+            update((prev) => ({
+              ...prev,
+              raplaUrl: value,
+              uniSynced: "",
+              uniEvents: value === prev.raplaUrl ? prev.uniEvents : [],
+            }));
+          }}
+        >
+          {uniSyncing ? "Lädt …" : "Speichern & laden"}
+        </Button>
+        {state.raplaUrl ? (
+          <Button quiet disabled={uniSyncing} onPress={() => void syncUni()}>
+            Jetzt neu laden
+          </Button>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function NotifySettings() {
+  const { state, update } = usePlanner();
+  const n = state.notify;
+  const [message, setMessage] = useState("");
+  const set = (patch: Partial<typeof n>) =>
+    update((prev) => ({ ...prev, notify: { ...prev.notify, ...patch } }));
+  const toggles = [
+    { key: "lectures", label: "Vorlesungen (15 Min. vorher, mit Raum)" },
+    { key: "tasks", label: "Aufgaben & Lernblöcke" },
+    { key: "training", label: "Training (30 Min. vorher)" },
+    { key: "exams", label: "Klausuren & Abgaben (14, 7, 3 und 1 Tag vorher)" },
+  ] as const;
+  return (
+    <View style={[s.card, { padding: 26, gap: 18 }]}>
+      <View style={s.row}>
+        <Bell size={20} color={C.green} />
+        <Heading>Benachrichtigungen</Heading>
+      </View>
+      <View style={s.sectionHeading}>
+        <View style={{ flex: 1, marginRight: 18 }}>
+          <Text style={s.h3}>Erinnerungen aktivieren</Text>
+          <Text style={[s.muted, { lineHeight: 20, marginTop: 6 }]}>
+            {Platform.OS === "web"
+              ? "Im Browser kommen Erinnerungen nur, solange Hap in einem Tab geöffnet ist. Zuverlässig am Handy mit der App."
+              : "Hap plant Erinnerungen für die nächsten Tage direkt auf deinem Handy."}
+          </Text>
+        </View>
+        <Switch
+          accessibilityLabel="Erinnerungen aktivieren"
+          value={n.enabled}
+          onValueChange={async (on) => {
+            if (on && !(await askPermission())) {
+              setMessage("Benachrichtigungen sind nicht erlaubt. Bitte in den System- bzw. Browser-Einstellungen freigeben.");
+              return;
+            }
+            setMessage(on ? "Erinnerungen sind aktiv." : "");
+            set({ enabled: on });
+          }}
+          trackColor={{ false: "#49434F", true: "#BC5568" }}
+          thumbColor="white"
+        />
+      </View>
+      {message ? <Text style={s.micro}>{message}</Text> : null}
+      {n.enabled && (
+        <>
+          {toggles.map((t) => (
+            <View key={t.key} style={s.sectionHeading}>
+              <Text style={[s.body, { flex: 1 }]}>{t.label}</Text>
+              <Switch
+                accessibilityLabel={t.label}
+                value={n[t.key]}
+                onValueChange={(v) => set({ [t.key]: v })}
+                trackColor={{ false: "#49434F", true: "#BC5568" }}
+                thumbColor="white"
+              />
+            </View>
+          ))}
+          <View>
+            <Text style={s.label}>Aufgaben vorher ankündigen</Text>
+            <View style={s.wrap}>
+              {[0, 5, 10, 15, 30, 60].map((m) => (
+                <Chip key={m} label={m ? m + " Min." : "Pünktlich"} active={n.lead === m} onPress={() => set({ lead: m })} />
+              ))}
+            </View>
+          </View>
+          <View>
+            <Text style={s.label}>Morgen-Briefing (dein Tag in einer Nachricht)</Text>
+            <View style={s.wrap}>
+              {["", "06:30", "07:00", "07:30", "08:00", "09:00"].map((t) => (
+                <Chip key={t || "off"} label={t || "Aus"} active={n.briefing === t} onPress={() => set({ briefing: t })} />
+              ))}
+            </View>
+          </View>
+          <View>
+            <Text style={s.label}>Tagesabschluss am Abend</Text>
+            <View style={s.wrap}>
+              {["", "20:00", "21:00", "21:30", "22:00"].map((t) => (
+                <Chip key={t || "off"} label={t || "Aus"} active={n.review === t} onPress={() => set({ review: t })} />
+              ))}
+            </View>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
 function SettingsContent() {
   const { state, update } = usePlanner();
+  const [profile, setProfile] = useState(false);
   const [name, setName] = useState(state.name);
   const [url, setUrl] = useState(state.apiUrl);
   const [token, setToken] = useState(state.accessToken);
@@ -330,6 +628,19 @@ function SettingsContent() {
               thumbColor="white"
             />
           </View>
+        </View>
+        <UniSettings />
+        <NotifySettings />
+        <View style={[s.card, { padding: 26, gap: 14 }]}>
+          <View style={s.row}>
+            <User size={20} color={C.green} />
+            <Heading>Profil & Ernährung</Heading>
+          </View>
+          <Text style={[s.body, { color: C.muted, lineHeight: 22 }]}>
+            {state.profile.age} Jahre · {state.profile.height} cm · {state.profile.weight} kg · Ziel: {goals[state.profile.goal].label}
+          </Text>
+          <Button quiet onPress={() => setProfile(true)}>Profil bearbeiten</Button>
+          {profile && <ProfileSheet close={() => setProfile(false)} />}
         </View>
         <View style={[s.card, { padding: 26, gap: 20 }]}>
           <Heading>Verbindung zum Essensplan</Heading>

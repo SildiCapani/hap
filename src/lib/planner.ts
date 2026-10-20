@@ -1,3 +1,5 @@
+import type { UniEvent } from "./rapla";
+
 export const categories = {
   uni: { label: "Uni", color: "#C4A3EF", pale: "#2D263C", icon: "graduation" },
   sport: {
@@ -40,6 +42,86 @@ export type MealPlan = {
   days: Meal[];
   groceries: { name: string; amount: string; category: string }[];
 };
+export type ExamKind = "exam" | "assignment" | "presentation";
+export type Exam = {
+  id: string;
+  title: string;
+  kind: ExamKind;
+  date: string;
+  time: string;
+  hours: number;
+  topics: { id: string; title: string; done: boolean }[];
+  note: string;
+};
+export type FocusSession = {
+  id: string;
+  date: string;
+  start: string;
+  minutes: number;
+  examId: string;
+  label: string;
+};
+export type ActiveFocus = {
+  examId: string;
+  label: string;
+  startedAt: number;
+  endsAt: number;
+  minutes: number;
+  pausedLeft: number | null;
+};
+export type Exercise = {
+  id: string;
+  name: string;
+  sets: number;
+  reps: number;
+  weight: number;
+};
+export type Workout = {
+  id: string;
+  name: string;
+  weekdays: number[];
+  time: string;
+  duration: number;
+  exercises: Exercise[];
+};
+export type WorkoutLog = {
+  id: string;
+  workoutId: string;
+  name: string;
+  date: string;
+  minutes: number;
+  entries: {
+    exerciseId: string;
+    name: string;
+    sets: { reps: number; weight: number }[];
+  }[];
+};
+export type SetDraft = { reps: string; weight: string; done: boolean };
+export type ActiveWorkout = {
+  workoutId: string;
+  day: string;
+  startedAt: number;
+  sets: Record<string, SetDraft[]>;
+};
+export type Goal = "bulk" | "cut" | "maintain";
+export type Profile = {
+  age: number;
+  male: boolean;
+  height: number;
+  weight: number;
+  goal: Goal;
+  diet: string;
+};
+export type NotifySettings = {
+  enabled: boolean;
+  lead: number;
+  lectures: boolean;
+  tasks: boolean;
+  exams: boolean;
+  training: boolean;
+  briefing: string;
+  review: string;
+};
 export type PlannerState = {
   version: 1;
   tasks: Task[];
@@ -52,7 +134,66 @@ export type PlannerState = {
   accessToken: string;
   mealPlan: MealPlan | null;
   importedWeeks: string[];
+  raplaUrl: string;
+  uniEvents: UniEvent[];
+  uniSynced: string;
+  exams: Exam[];
+  focus: FocusSession[];
+  activeFocus: ActiveFocus | null;
+  workouts: Workout[];
+  workoutLogs: WorkoutLog[];
+  activeWorkout: ActiveWorkout | null;
+  bodyWeight: { date: string; kg: number }[];
+  protein: Record<string, number>;
+  profile: Profile;
+  notify: NotifySettings;
 };
+export const defaultProfile: Profile = {
+  age: 22,
+  male: true,
+  height: 180,
+  weight: 75,
+  goal: "bulk",
+  diet: "",
+};
+export const defaultNotify: NotifySettings = {
+  enabled: false,
+  lead: 10,
+  lectures: true,
+  tasks: true,
+  exams: true,
+  training: true,
+  briefing: "07:30",
+  review: "21:30",
+};
+const extras = (): Omit<
+  PlannerState,
+  | "version"
+  | "tasks"
+  | "done"
+  | "groceries"
+  | "started"
+  | "name"
+  | "gentle"
+  | "apiUrl"
+  | "accessToken"
+  | "mealPlan"
+  | "importedWeeks"
+> => ({
+  raplaUrl: "",
+  uniEvents: [],
+  uniSynced: "",
+  exams: [],
+  focus: [],
+  activeFocus: null,
+  workouts: [],
+  workoutLogs: [],
+  activeWorkout: null,
+  bodyWeight: [],
+  protein: {},
+  profile: { ...defaultProfile },
+  notify: { ...defaultNotify },
+});
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {
   none: "Einmalig",
@@ -117,6 +258,73 @@ export function streak(state: PlannerState, today: string): number {
   }
   return count;
 }
+export function taskXp(task: Task): number {
+  return Math.min(60, Math.max(10, Math.round(task.duration / 3)));
+}
+export function dayXp(state: PlannerState, day: string): number {
+  const tasks = tasksFor(state, day)
+    .filter((t) => state.done[occurrenceKey(t, day)])
+    .reduce((sum, t) => sum + taskXp(t), 0);
+  const focus = state.focus
+    .filter((f) => f.date === day)
+    .reduce((sum, f) => sum + f.minutes, 0);
+  const training = state.workoutLogs.filter((l) => l.date === day).length * 60;
+  return tasks + focus + training;
+}
+export function totalXp(state: PlannerState, today: string): number {
+  const days = new Set<string>([
+    ...Object.keys(state.done)
+      .filter((k) => state.done[k])
+      .map((k) => k.slice(-10)),
+    ...state.focus.map((f) => f.date),
+    ...state.workoutLogs.map((l) => l.date),
+  ]);
+  let xp = 0;
+  for (const d of days) if (d <= today) xp += dayXp(state, d);
+  return xp;
+}
+export function levelFor(xp: number) {
+  // Each level needs 100 XP more than the previous one.
+  let level = 1,
+    need = 200,
+    rest = xp;
+  while (rest >= need) {
+    rest -= need;
+    level++;
+    need += 100;
+  }
+  return { level, into: rest, need };
+}
+export function newId(prefix: string) {
+  return prefix + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 9);
+}
+// Ends the running focus round and records the given minutes.
+export function finishFocus(state: PlannerState, mins: number): PlannerState {
+  const active = state.activeFocus;
+  if (!active) return state;
+  const start = new Date(active.startedAt);
+  return {
+    ...state,
+    activeFocus: null,
+    focus:
+      mins < 1
+        ? state.focus
+        : [
+            ...state.focus,
+            {
+              id: "focus-" + active.startedAt,
+              date: dateKey(start),
+              start:
+                String(start.getHours()).padStart(2, "0") +
+                ":" +
+                String(start.getMinutes()).padStart(2, "0"),
+              minutes: mins,
+              examId: active.examId,
+              label: active.label,
+            },
+          ],
+  };
+}
 export function createState(today = dateKey()): PlannerState {
   const sample = (
     id: string,
@@ -148,6 +356,7 @@ export function createState(today = dateKey()): PlannerState {
     accessToken: "",
     mealPlan: null,
     importedWeeks: [],
+    ...extras(),
     done: {},
     groceries: {},
     tasks: [
@@ -219,9 +428,47 @@ export function validMealPlan(value: unknown): value is MealPlan {
     )
   );
 }
+const isArray = (v: unknown) => Array.isArray(v);
 export function readState(raw: string): PlannerState {
   const value = JSON.parse(raw) as PlannerState;
+  if (!value || typeof value !== "object")
+    throw new Error("Das ist kein gültiges Hap-Backup.");
   value.importedWeeks ??= [];
+  const defaults = extras();
+  for (const key of Object.keys(defaults) as (keyof typeof defaults)[])
+    (value as Record<string, unknown>)[key] ??= defaults[key];
+  value.profile = { ...defaultProfile, ...value.profile };
+  value.notify = { ...defaultNotify, ...value.notify };
+  if (
+    typeof value.raplaUrl !== "string" ||
+    ![
+      value.uniEvents,
+      value.exams,
+      value.focus,
+      value.workouts,
+      value.workoutLogs,
+      value.bodyWeight,
+    ].every(isArray) ||
+    !value.exams.every(
+      (e) =>
+        typeof e.id === "string" &&
+        typeof e.title === "string" &&
+        validDate(e.date) &&
+        Number.isFinite(e.hours) &&
+        isArray(e.topics),
+    ) ||
+    !value.focus.every(
+      (f) => validDate(f.date) && Number.isFinite(f.minutes) && f.minutes > 0,
+    ) ||
+    !value.workouts.every(
+      (w) =>
+        typeof w.name === "string" && isArray(w.weekdays) && isArray(w.exercises),
+    ) ||
+    !value.workoutLogs.every((l) => validDate(l.date) && isArray(l.entries)) ||
+    typeof value.protein !== "object" ||
+    isArray(value.protein)
+  )
+    throw new Error("Die Lern- oder Trainingsdaten sind ungültig.");
   if (
     !Array.isArray(value.importedWeeks) ||
     !value.importedWeeks.every(validDate)

@@ -24,7 +24,9 @@ import { router, usePathname } from "expo-router";
 import {
   ArrowRight,
   BookOpen,
+  Brain,
   CalendarDays,
+  Code,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -32,8 +34,10 @@ import {
   Coffee,
   Dumbbell,
   Flower2,
+  Footprints,
   GraduationCap,
   House,
+  Laptop,
   Leaf,
   MoreHorizontal,
   Plus,
@@ -44,6 +48,7 @@ import {
   Sprout,
   Sun,
   Target,
+  Timer,
   Trash2,
   Trophy,
   Utensils,
@@ -67,6 +72,7 @@ import {
   type Task,
 } from "@/lib/planner";
 import { usePlanner } from "@/lib/store";
+import { tap } from "@/lib/notify";
 
 export const C = {
   bg: "#121316",
@@ -93,16 +99,24 @@ const icons: Record<string, LucideIcon> = {
   bag: ShoppingBag,
   flower: Flower2,
   house: House,
+  brain: Brain,
+  code: Code,
+  laptop: Laptop,
+  timer: Timer,
+  footprints: Footprints,
 };
 const nav = [
   { path: "/", label: "Heute", icon: House },
   { path: "/calendar", label: "Kalender", icon: CalendarDays },
-  { path: "/meals", label: "Essensplan", icon: Utensils },
+  { path: "/study", label: "Lernen", icon: Brain },
+  { path: "/training", label: "Training", icon: Dumbbell },
+  { path: "/meals", label: "Essen", icon: Utensils },
   { path: "/progress", label: "Fortschritt", icon: Trophy },
 ];
-const EditorContext = createContext<(date?: string, task?: Task) => void>(
-  () => {},
-);
+export type Preset = Partial<Omit<Task, "id" | "skipped">>;
+const EditorContext = createContext<
+  (date?: string, task?: Task, preset?: Preset) => void
+>(() => {});
 export function useEditor() {
   return useContext(EditorContext);
 }
@@ -269,14 +283,71 @@ export function Ring({
     </View>
   );
 }
+// Shows a running focus round or workout on every other screen, so it is
+// one tap away when the app is opened in between.
+function ActiveBanner({ path }: { path: string }) {
+  const { state } = usePlanner();
+  const [now, setNow] = useState(() => Date.now());
+  const focus = state.activeFocus;
+  const workout = state.activeWorkout;
+  useEffect(() => {
+    if (!focus) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [focus]);
+  const items: { key: string; to: string; label: string; color: string }[] = [];
+  if (focus && path !== "/focus") {
+    const left = Math.max(0, focus.pausedLeft ?? focus.endsAt - now);
+    const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
+    items.push({
+      key: "focus",
+      to: "/focus",
+      color: "#F07B83",
+      label:
+        (focus.pausedLeft !== null ? "Fokus pausiert" : "Fokus läuft") +
+        " · " + focus.label + " · " + String(mm).padStart(2, "0") + ":" + String(ss).padStart(2, "0"),
+    });
+  }
+  if (workout && path !== "/training") {
+    const w = state.workouts.find((x) => x.id === workout.workoutId);
+    const all = Object.values(workout.sets).flat();
+    items.push({
+      key: "workout",
+      to: "/training",
+      color: categories.sport.color,
+      label: (w?.name || "Training") + " läuft · " + all.filter((x) => x.done).length + "/" + all.length + " Sätze",
+    });
+  }
+  if (!items.length) return null;
+  return (
+    <View style={{ gap: 1 }}>
+      {items.map((i) => (
+        <Pressable
+          key={i.key}
+          accessibilityRole="link"
+          onPress={() => router.push(i.to as "/")}
+          style={[s.row, { backgroundColor: "#2A1C22", paddingHorizontal: 20, paddingVertical: 11 }]}
+        >
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: i.color }} />
+          <Text numberOfLines={1} style={{ color: i.color, fontWeight: "700", fontSize: 12, flex: 1, fontVariant: ["tabular-nums"] }}>
+            {i.label}
+          </Text>
+          <ChevronRight size={15} color={i.color} />
+        </Pressable>
+      ))}
+    </View>
+  );
+}
 export function Shell({
   children,
   title,
   subtitle,
+  header = true,
 }: {
   children: ReactNode;
   title: string;
   subtitle: string;
+  header?: boolean;
 }) {
   const { width } = useWindowDimensions();
   const wide = width >= 1000;
@@ -284,12 +355,14 @@ export function Shell({
   const path = usePathname();
   const { state, ready, saved, error, retry } = usePlanner();
   const today = useToday();
-  const [editor, setEditor] = useState<{ date: string; task?: Task } | null>(
-    null,
-  );
+  const [editor, setEditor] = useState<{
+    date: string;
+    task?: Task;
+    preset?: Preset;
+  } | null>(null);
   return (
     <EditorContext.Provider
-      value={(date = today, task) => setEditor({ date, task })}
+      value={(date = today, task, preset) => setEditor({ date, task, preset })}
     >
       <SafeAreaView style={s.root} edges={["top", "left", "right"]}>
         {wide && (
@@ -401,6 +474,7 @@ export function Shell({
               </Pressable>
             </View>
           </View>
+          <ActiveBanner path={path} />
           {error ? (
             <View style={s.errorBar}>
               <Text style={{ color: "#F3A4A9", flex: 1 }}>{error}</Text>
@@ -429,26 +503,35 @@ export function Shell({
               ]}
             >
               <View style={s.content}>
-                <View
-                  style={[s.pageHeader, mobile && { alignItems: "flex-start" }]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.h1, mobile && { fontSize: 30 }]}>
-                      {title}
-                    </Text>
-                    <Text style={[s.body, { color: C.muted, marginTop: 7 }]}>
-                      {subtitle}
-                    </Text>
+                {header && (
+                  <View
+                    style={[
+                      s.pageHeader,
+                      mobile && { alignItems: "flex-start", marginBottom: 18 },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.h1, mobile && { fontSize: 26 }]}>
+                        {title}
+                      </Text>
+                      {!mobile && (
+                        <Text
+                          style={[s.body, { color: C.muted, marginTop: 7 }]}
+                        >
+                          {subtitle}
+                        </Text>
+                      )}
+                    </View>
+                    {!mobile && (
+                      <Button
+                        icon={Plus}
+                        onPress={() => setEditor({ date: today })}
+                      >
+                        Neue Aufgabe
+                      </Button>
+                    )}
                   </View>
-                  {!mobile && (
-                    <Button
-                      icon={Plus}
-                      onPress={() => setEditor({ date: today })}
-                    >
-                      Neue Aufgabe
-                    </Button>
-                  )}
-                </View>
+                )}
                 {children}
               </View>
             </ScrollView>
@@ -487,6 +570,7 @@ export function Shell({
           <TaskEditor
             day={editor.date}
             task={editor.task}
+            preset={editor.preset}
             close={() => setEditor(null)}
           />
         )}
@@ -506,15 +590,16 @@ function TaskRow({ task, day }: { task: Task; day: string }) {
         aria-checked={done}
         accessibilityState={{ checked: done }}
         accessibilityLabel={task.title + (done ? " wieder öffnen" : " abhaken")}
-        onPress={() =>
+        onPress={() => {
+          tap(done ? "light" : "success");
           update((prev) => ({
             ...prev,
             done: {
               ...prev.done,
               [occurrenceKey(task, day)]: !prev.done[occurrenceKey(task, day)],
             },
-          }))
-        }
+          }));
+        }}
         style={[
           s.checkbox,
           done && { backgroundColor: C.button, borderColor: C.button },
@@ -868,22 +953,25 @@ export function DaySide({ day }: { day: string }) {
 function TaskEditor({
   day,
   task,
+  preset,
   close,
 }: {
   day: string;
   task?: Task;
+  preset?: Preset;
   close: () => void;
 }) {
   const { update } = usePlanner();
   const { width } = useWindowDimensions();
-  const [title, setTitle] = useState(task?.title || "");
-  const [note, setNote] = useState(task?.note || "");
-  const [date, setDate] = useState(task?.date || day);
-  const [time, setTime] = useState(task?.time || "09:00");
-  const [duration, setDuration] = useState(String(task?.duration || 30));
-  const [category, setCategory] = useState<Category>(task?.category || "life");
-  const [icon, setIcon] = useState(task?.icon || "sparkles");
-  const [repeat, setRepeat] = useState<Repeat>(task?.repeat || "none");
+  const base = task || preset;
+  const [title, setTitle] = useState(base?.title || "");
+  const [note, setNote] = useState(base?.note || "");
+  const [date, setDate] = useState(base?.date || day);
+  const [time, setTime] = useState(base?.time || "09:00");
+  const [duration, setDuration] = useState(String(base?.duration || 30));
+  const [category, setCategory] = useState<Category>(base?.category || "life");
+  const [icon, setIcon] = useState(base?.icon || "sparkles");
+  const [repeat, setRepeat] = useState<Repeat>(base?.repeat || "none");
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
   function save() {
@@ -1150,6 +1238,97 @@ function TaskEditor({
         </View>
       </View>
     </Modal>
+  );
+}
+export function Sheet({
+  title,
+  subtitle,
+  close,
+  children,
+  footer,
+  width: preferred = 560,
+}: {
+  title: string;
+  subtitle?: string;
+  close: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  width?: number;
+}) {
+  const { width } = useWindowDimensions();
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={close}>
+      <View style={s.modalBackdrop}>
+        <Pressable
+          accessibilityLabel="Dialog schließen"
+          onPress={close}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          accessibilityViewIsModal
+          style={[
+            s.modal,
+            {
+              width: width < preferred + 40 ? "95%" : preferred,
+              maxHeight: "92%",
+            },
+          ]}
+        >
+          <View style={s.modalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.h2}>{title}</Text>
+              {subtitle ? (
+                <Text style={[s.muted, { marginTop: 5 }]}>{subtitle}</Text>
+              ) : null}
+            </View>
+            <Pressable
+              accessibilityLabel="Schließen"
+              onPress={close}
+              style={s.arrow}
+            >
+              <X size={21} color={C.muted} />
+            </Pressable>
+          </View>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ padding: 25, gap: 19 }}
+          >
+            {children}
+          </ScrollView>
+          {footer ? <View style={s.modalFooter}>{footer}</View> : null}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+export function Chip({
+  label,
+  active,
+  onPress,
+  color = C.green,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  color?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      style={[
+        s.filter,
+        active && { backgroundColor: C.pale, borderColor: color },
+      ]}
+    >
+      <Text style={[s.filterText, active && { color, fontWeight: "600" }]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 export function Field({
