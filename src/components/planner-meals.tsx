@@ -467,6 +467,7 @@ function NotifySettings() {
   const [message, setMessage] = useState("");
   const toggle = useNotifyToggle();
   const push = usePushActive();
+  const [token, setToken] = useState("");
   const set = (patch: Partial<typeof n>) =>
     update((prev) => ({ ...prev, notify: { ...prev.notify, ...patch } }));
   const toggles = [
@@ -503,6 +504,30 @@ function NotifySettings() {
         />
       </View>
       {message ? <Text style={[s.micro, { lineHeight: 17 }]}>{message}</Text> : null}
+      {Platform.OS === "web" && !state.accessToken && (
+        <View style={{ gap: 10 }}>
+          <Field
+            label="Persönlicher App-Zugang (für Push)"
+            value={token}
+            onChangeText={setToken}
+            placeholder="Wert von HAP_ACCESS_TOKEN"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Button
+            quiet
+            icon={Check}
+            disabled={token.trim().length < 32}
+            onPress={() => {
+              update((prev) => ({ ...prev, accessToken: token.trim() }));
+              setMessage("App-Zugang gespeichert. Jetzt Erinnerungen einschalten.");
+            }}
+          >
+            Zugang speichern
+          </Button>
+        </View>
+      )}
       <InstallCard dismissible={false} />
       {n.enabled && (
         <>

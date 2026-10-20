@@ -59,7 +59,7 @@ export async function enableWebPush(base: string, token: string): Promise<string
     return isIOS() && !isStandalone()
       ? "Auf dem iPhone: zuerst über Teilen → „Zum Home-Bildschirm“ hinzufügen und Hap von dort öffnen."
       : "Dieser Browser unterstützt keine Push-Benachrichtigungen.";
-  if (!token) return "Für Push braucht Hap deinen persönlichen App-Zugang (Einstellungen → Essensplan-Verbindung).";
+  if (!token) return "Für Push braucht Hap deinen persönlichen App-Zugang – trag ihn unten ein (Wert von HAP_ACCESS_TOKEN).";
   if ((await Notification.requestPermission()) !== "granted")
     return "Benachrichtigungen wurden nicht erlaubt. Du kannst sie in den Browser- bzw. iPhone-Einstellungen freigeben.";
   const config = await fetch(endpoint(base)).catch(() => null);

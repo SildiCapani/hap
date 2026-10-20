@@ -39,6 +39,14 @@
         height: 100%;
         flex: 1;
       }
+      /* On iOS home screen apps "100%" leaves a gap below the tab bar;
+         the dynamic viewport height covers the whole screen. */
+      @supports (height: 100dvh) {
+        html,
+        body {
+          height: 100dvh;
+        }
+      }
     </style>
   </head>
 
