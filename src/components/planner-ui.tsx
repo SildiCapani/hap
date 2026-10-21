@@ -9,6 +9,7 @@ import {
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -290,6 +291,36 @@ export function Ring({
     </View>
   );
 }
+// Height of the on-screen keyboard over the app, so things pinned to the
+// bottom (the quick entry) can sit right above it instead of behind it.
+export function useKeyboardHeight() {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const vv = typeof window !== "undefined" ? window.visualViewport : null;
+      if (!vv) return;
+      const update = () => {
+        const layout = document.body.getBoundingClientRect().height || window.innerHeight;
+        const covered = layout - (vv.offsetTop + vv.height);
+        setHeight(covered > 80 ? Math.round(covered) : 0);
+      };
+      vv.addEventListener("resize", update);
+      vv.addEventListener("scroll", update);
+      return () => {
+        vv.removeEventListener("resize", update);
+        vv.removeEventListener("scroll", update);
+      };
+    }
+    const show = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+}
+
 // Shows a running focus round or workout on every other screen, so it is
 // one tap away when the app is opened in between.
 function ActiveBanner({ path }: { path: string }) {
@@ -364,6 +395,7 @@ export function Shell({
   const mobile = width < 680;
   const path = usePathname();
   const insets = useSafeAreaInsets();
+  const keyboard = useKeyboardHeight();
   const { state, ready, saved, error, retry } = usePlanner();
   const today = useToday();
   const [editor, setEditor] = useState<{
@@ -568,7 +600,15 @@ export function Shell({
           {mobile && bottom && (
             <View
               pointerEvents="box-none"
-              style={{ position: "absolute", left: 0, right: 0, bottom: 54 + Math.max(10, insets.bottom), paddingHorizontal: 12, paddingVertical: 10 }}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: keyboard ? keyboard + 6 : 54 + Math.max(10, insets.bottom),
+                paddingHorizontal: 12,
+                paddingVertical: keyboard ? 4 : 10,
+                zIndex: 10,
+              }}
             >
               {bottom}
             </View>
