@@ -21,10 +21,12 @@ import {
   LayoutList,
   Mic,
   Play,
+  Plus,
   Rows3,
   Send,
-  Sparkles,
+  Settings2,
   Wand,
+  X,
 } from "lucide-react-native";
 import {
   categories,
@@ -33,7 +35,6 @@ import {
   newId,
   occurrenceKey,
   parseDate,
-  progress,
   repeats,
   streak,
   totalXp,
@@ -79,76 +80,55 @@ function NowCard() {
   const mins = now.getHours() * 60 + now.getMinutes();
   const { current, next } = nextUp(state, today, mins);
   const level = levelFor(totalXp(state, today));
-  const greeting = now.getHours() < 11 ? "Guten Morgen" : now.getHours() < 18 ? "Hey" : "Guten Abend";
-  const { width } = useWindowDimensions();
-  const mobile = width < 680;
   const main = current || next;
   const after = current ? next : nextUp(state, today, (next?.start ?? 0) + 1).next;
-  const deadlines = upcomingExams(state, today).slice(0, 2);
-  const p = progress(state, today);
+  const deadline = upcomingExams(state, today)[0];
   function act(item: NonNullable<typeof main>) {
     tap();
     if (item.kind === "training") router.push("/training" as "/");
     else if (item.kind === "exam") router.push("/study" as "/");
     else if (item.kind === "task" && item.task?.category === "uni" && item.task.icon === "brain") router.push("/focus" as "/");
   }
+  const square = { width: 40, height: 40, borderRadius: 12, backgroundColor: "#17171B", alignItems: "center", justifyContent: "center" } as const;
   return (
-    <View style={{ gap: 14, marginBottom: 18 }}>
-      <View style={[s.row, { justifyContent: "space-between", flexWrap: "wrap", gap: 10 }]}>
-        <View style={{ flex: 1, minWidth: 180 }}>
-          <Text style={{ color: C.ink, fontSize: mobile ? 22 : 26, fontWeight: "700", letterSpacing: -0.6 }}>
-            {greeting}
-            {state.name ? ", " + state.name : ""}
-          </Text>
-          <Text style={[s.muted, { marginTop: 3 }]}>
+    <View style={{ marginBottom: 14 }}>
+      <View style={[s.row, { justifyContent: "space-between" }]}>
+        <Pressable accessibilityRole="link" accessibilityLabel="Fortschritt öffnen" onPress={() => router.push("/progress" as "/")} style={{ flex: 1 }}>
+          <Text style={{ color: C.muted, fontSize: 14, fontWeight: "500" }}>
             {parseDate(today).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}
           </Text>
-        </View>
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel="Fortschritt öffnen"
-          onPress={() => router.push("/progress" as "/")}
-          style={[s.row, { gap: 6 }]}
-        >
-          <Pill bg="#2A2B32" color="#FFD0D5">
-            ✓ {p.done}/{p.total}
-          </Pill>
-          <Pill bg="#2A2B32" color="#FFD0D5">
-            🔥 {Math.max(streak(state, today), studyStreak(state, today))}
-          </Pill>
-          <Pill bg="#2A2B32" color="#FFD0D5">
-            Lv {level.level} · +{dayXp(state, today)}
-          </Pill>
-        </Pressable>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        disabled={!main}
-        onPress={() => main && act(main)}
-        style={[s.hero, { marginBottom: 0, padding: mobile ? 20 : 26, flexDirection: "column", alignItems: "stretch", gap: 0 }]}
-      >
-        <View style={s.row}>
-          {current ? <Pulse color="#FF5A6A" /> : <CalendarClock size={14} color="#FFB3BC" />}
-          <Text style={{ color: "#FFB3BC", fontSize: 11, letterSpacing: 1.4, fontWeight: "800" }}>
-            {current ? "JETZT" : main ? "ALS NÄCHSTES" : "HEUTE"}
+          <Text style={{ color: "#6F6D76", fontSize: 12, marginTop: 2 }}>
+            Serie {Math.max(streak(state, today), studyStreak(state, today))} · Level {level.level} · +{dayXp(state, today)} XP
           </Text>
-          {main && (
-            <Text style={{ marginLeft: "auto", color: "#FFE4E8", fontSize: 13, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
-              {current ? "noch " + (current.end - mins) + " Min." : until(main.start - mins)}
-            </Text>
-          )}
+        </Pressable>
+        <View style={[s.row, { gap: 8 }]}>
+          <Pressable accessibilityRole="link" accessibilityLabel="Monatskalender öffnen" onPress={() => router.push("/calendar" as "/")} style={square}>
+            <CalendarDays size={18} color={C.ink} />
+          </Pressable>
+          <Pressable accessibilityRole="link" accessibilityLabel="Einstellungen öffnen" onPress={() => router.push("/settings")} style={square}>
+            <Settings2 size={18} color={C.ink} />
+          </Pressable>
+        </View>
+      </View>
+      <Pressable accessibilityRole="button" disabled={!main} onPress={() => main && act(main)} style={{ marginTop: 22 }}>
+        <View style={s.row}>
+          {current ? <Pulse color={C.green} /> : <CalendarClock size={13} color={C.green} />}
+          <Text style={{ color: C.green, fontSize: 12, letterSpacing: 1.6, fontWeight: "800" }}>
+            {current ? "JETZT · NOCH " + (current.end - mins) + " MIN." : main ? "ALS NÄCHSTES · " + until(main.start - mins).toUpperCase() : "HEUTE"}
+          </Text>
         </View>
         {main ? (
           <>
-            <Text style={{ color: "white", fontSize: mobile ? 22 : 26, fontWeight: "800", marginTop: 10, letterSpacing: -0.5 }} numberOfLines={2}>
+            <Text style={{ color: C.ink, fontSize: 36, lineHeight: 39, fontWeight: "800", letterSpacing: -1.2, marginTop: 8 }} numberOfLines={2}>
               {main.title}
             </Text>
-            <Text style={{ color: "#E9C3CC", fontSize: 13, marginTop: 6 }} numberOfLines={1}>
+            <Text style={{ color: "#B8B6BE", fontSize: 15, marginTop: 6 }} numberOfLines={1}>
               {clock(main.start)}–{clock(main.end)} · {main.sub}
+              {after ? " · danach " + after.title : ""}
             </Text>
             {current && (
               <View style={{ marginTop: 14 }}>
-                <Bar value={(mins - current.start) / Math.max(1, current.end - current.start)} color="#FF8A96" height={6} />
+                <Bar value={(mins - current.start) / Math.max(1, current.end - current.start)} color={C.green} height={3} />
               </View>
             )}
             {current?.kind === "task" && current.task && (
@@ -159,34 +139,24 @@ function NowCard() {
                   tap("success");
                   update((prev) => ({ ...prev, done: { ...prev.done, [key]: true } }));
                 }}
-                style={[s.row, { marginTop: 14, alignSelf: "flex-start", backgroundColor: "#00000033", paddingVertical: 9, paddingHorizontal: 14, borderRadius: 10 }]}
+                style={[s.row, { marginTop: 14, alignSelf: "flex-start", backgroundColor: "#17171B", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }]}
               >
-                <CheckCheck size={15} color="#FFE4E8" />
-                <Text style={{ color: "#FFE4E8", fontWeight: "700", fontSize: 12 }}>Erledigt</Text>
+                <CheckCheck size={15} color={C.ink} />
+                <Text style={{ color: C.ink, fontWeight: "700", fontSize: 13 }}>Erledigt</Text>
               </Pressable>
-            )}
-            {after && (
-              <Text style={[s.micro, { color: "#D9A9B5", marginTop: 14 }]} numberOfLines={1}>
-                Danach: {clock(after.start)} {after.title}
-              </Text>
             )}
           </>
         ) : (
-          <Text style={{ color: "white", fontSize: 20, fontWeight: "700", marginTop: 10 }}>
-            Nichts mehr geplant. Freizeit 🎮
-          </Text>
+          <Text style={{ color: C.ink, fontSize: 30, fontWeight: "800", letterSpacing: -1, marginTop: 8 }}>Nichts mehr geplant.</Text>
         )}
       </Pressable>
-      {deadlines.length > 0 && (
-        <View style={[s.wrap, { gap: 6 }]}>
-          {deadlines.map((d) => (
-            <Pressable key={d.exam.id} onPress={() => router.push("/study" as "/")} style={[s.row, { backgroundColor: "#22232A", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, gap: 6 }]}>
-              <Flag size={12} color={examKinds[d.exam.kind].color} />
-              <Text style={{ color: C.ink, fontSize: 11, fontWeight: "600" }}>{d.exam.title}</Text>
-              <Text style={{ color: examKinds[d.exam.kind].color, fontSize: 11 }}>in {d.days} T.</Text>
-            </Pressable>
-          ))}
-        </View>
+      {deadline && (
+        <Pressable onPress={() => router.push("/study" as "/")} style={[s.row, { marginTop: 14, gap: 6 }]}>
+          <Flag size={13} color={examKinds[deadline.exam.kind].color} />
+          <Text style={{ color: C.muted, fontSize: 13 }}>
+            {examKinds[deadline.exam.kind].label} {deadline.exam.title} in {deadline.days} {deadline.days === 1 ? "Tag" : "Tagen"}
+          </Text>
+        </Pressable>
       )}
     </View>
   );
@@ -269,7 +239,7 @@ function QuickActions() {
               tap();
               a.onPress();
             }}
-            style={({ pressed }) => [s.card, { padding: 14, width: 210, gap: 6, opacity: pressed ? 0.8 : 1, borderColor: a.color + "55" }]}
+            style={({ pressed }) => [{ padding: 12, width: 200, gap: 4, borderRadius: 14, backgroundColor: "#17171B", opacity: pressed ? 0.8 : 1 }]}
           >
             <View style={[s.row, { gap: 8 }]}>
               <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: a.color + "26", alignItems: "center", justifyContent: "center" }}>
@@ -298,6 +268,10 @@ export function QuickAdd({ day }: { day: string }) {
   const [thinking, setThinking] = useState(false);
   const [proposal, setProposal] = useState<(SmartTask & { on: boolean })[] | null>(null);
   const [listening, setListening] = useState<null | (() => void)>(null);
+  const { width } = useWindowDimensions();
+  // On phones the entry hides behind a + button until it is needed.
+  const collapsible = width < 680;
+  const [open, setOpen] = useState(false);
   const draft = text.trim() ? parseQuick(text, day === today ? today : day) : null;
   // Longer sentences with several steps go to the AI; short ones stay local.
   const complex = /\b(danach|dann|nach der|nach dem|vor der|vor dem|und dann|anschließend)\b|,/i.test(text) || text.trim().split(/\s+/).length > 9;
@@ -305,6 +279,7 @@ export function QuickAdd({ day }: { day: string }) {
     setFlash(message);
     setText("");
     setTimeout(() => setFlash(""), 3500);
+    if (collapsible) setOpen(false);
   }
   function add() {
     if (complex && state.accessToken) return void ask();
@@ -360,20 +335,59 @@ export function QuickAdd({ day }: { day: string }) {
   }
   const cat = draft ? categories[draft.category] : null;
   const ready = !!draft || (complex && !!state.accessToken);
+  if (collapsible && !open)
+    return (
+      <View pointerEvents="box-none" style={{ alignItems: "flex-end" }}>
+        {flash ? (
+          <View style={{ alignSelf: "stretch", backgroundColor: "#17171B", borderRadius: 14, padding: 12, marginBottom: 10 }}>
+            <Text style={[s.micro, { color: "#98C5A9" }]}>✓ {flash}</Text>
+          </View>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Etwas eintragen"
+          onPress={() => {
+            tap("medium");
+            setOpen(true);
+          }}
+          style={({ pressed }) => ({
+            width: 58,
+            height: 58,
+            borderRadius: 29,
+            backgroundColor: C.button,
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [{ scale: pressed ? 0.94 : 1 }],
+            shadowColor: "#000",
+            shadowOpacity: 0.5,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 6,
+          })}
+        >
+          <Plus size={26} color={C.onAccent} strokeWidth={2.6} />
+        </Pressable>
+      </View>
+    );
   return (
-    <View style={[s.card, { padding: 14, marginBottom: 18 }]}>
-      <View style={[s.row, { gap: 8 }]}>
-        <Sparkles size={18} color={C.green} />
+    <Animated.View entering={collapsible ? FadeInDown.duration(180) : undefined} style={collapsible ? { backgroundColor: C.bg, borderRadius: 18, padding: 6, borderWidth: 1, borderColor: C.line } : undefined}>
+      <View style={[s.row, { gap: 8, backgroundColor: "#17171B", borderRadius: 16, paddingLeft: 14, paddingRight: 6, minHeight: 52 }]}>
         <TextInput
+          autoFocus={collapsible}
           value={text}
           onChangeText={setText}
           onSubmitEditing={add}
           returnKeyType="done"
-          placeholder="Was steht an? z. B. „nach der Vorlesung 2h DB lernen, danach Gym“"
+          placeholder="Was steht an?"
           placeholderTextColor="#7E7887"
           accessibilityLabel="Schnelleingabe"
           style={{ flex: 1, color: C.ink, fontSize: 16, paddingVertical: 8, minHeight: 40 }}
         />
+        {collapsible && !text.trim() && (
+          <Pressable accessibilityRole="button" accessibilityLabel="Eingabe schließen" onPress={() => setOpen(false)} hitSlop={8} style={{ width: 32, height: 38, alignItems: "center", justifyContent: "center" }}>
+            <X size={18} color={C.muted} />
+          </Pressable>
+        )}
         {speechAvailable() && (
           <Pressable
             accessibilityRole="button"
@@ -391,7 +405,7 @@ export function QuickAdd({ day }: { day: string }) {
           onPress={add}
           style={{ backgroundColor: ready ? C.button : "#2A2B31", width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
         >
-          {thinking ? <ActivityIndicator color="white" size="small" /> : complex ? <Wand size={16} color="white" /> : <Send size={16} color="white" />}
+          {thinking ? <ActivityIndicator color={C.onAccent} size="small" /> : complex ? <Wand size={16} color={ready ? C.onAccent : C.muted} /> : <Send size={16} color={ready ? C.onAccent : C.muted} />}
         </Pressable>
       </View>
       {complex && text.trim() ? (
@@ -431,7 +445,7 @@ export function QuickAdd({ day }: { day: string }) {
               style={[s.row, { padding: 12, borderRadius: 12, backgroundColor: "#22232A", gap: 12 }]}
             >
               <View style={[s.checkbox, t.on && { backgroundColor: C.button, borderColor: C.button }]}>
-                {t.on && <Check size={14} color="white" strokeWidth={3} />}
+                {t.on && <Check size={14} color={C.onAccent} strokeWidth={3} />}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.h3}>{t.title}</Text>
@@ -444,7 +458,7 @@ export function QuickAdd({ day }: { day: string }) {
           ))}
         </Sheet>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -553,11 +567,9 @@ function TrainingCard({ day }: { day: string }) {
   );
 }
 
-function TodayContent() {
+function TodayContent({ day, setSelected }: { day: string; setSelected: (d: string | null) => void }) {
   const today = useToday();
-  const [selected, setSelected] = useState<string | null>(null);
   const [mode, setMode] = useState<"timeline" | "list">("timeline");
-  const day = selected || today;
   const { width } = useWindowDimensions();
   const side = width >= 1180;
   return (
@@ -568,41 +580,30 @@ function TodayContent() {
         <WeekPlanCard />
         <DueTodos />
         <InstallCard />
-        <QuickAdd day={day} />
-        <View style={[s.sectionHeading, { marginBottom: 12 }]}>
-          <View style={s.row}>
-            <Text style={s.h2}>
-              {day === today ? "Dein Zeitplan" : parseDate(day).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}
-            </Text>
-          </View>
-          <View style={s.row}>
+        <View style={[s.sectionHeading, { marginTop: 8, marginBottom: 10 }]}>
+          <Text style={s.eyebrow}>
+            {day === today ? "ZEITPLAN" : parseDate(day).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
+          </Text>
+          <View style={[s.row, { gap: 14 }]}>
             {day !== today && (
-              <Pressable accessibilityRole="button" onPress={() => setSelected(null)}>
+              <Pressable accessibilityRole="button" onPress={() => setSelected(null)} hitSlop={8}>
                 <Text style={s.link}>Zu heute</Text>
               </Pressable>
             )}
             <Pressable
-              accessibilityRole="link"
-              accessibilityLabel="Monatskalender öffnen"
-              onPress={() => router.push("/calendar" as "/")}
-              style={s.filter}
-            >
-              <CalendarDays size={14} color={C.green} />
-              <Text style={s.link}>Monat</Text>
-            </Pressable>
-            <Pressable
               accessibilityRole="button"
               accessibilityLabel={mode === "timeline" ? "Als Liste anzeigen" : "Als Zeitplan anzeigen"}
               onPress={() => setMode(mode === "timeline" ? "list" : "timeline")}
-              style={s.filter}
+              hitSlop={8}
+              style={s.row}
             >
-              {mode === "timeline" ? <LayoutList size={14} color={C.green} /> : <Rows3 size={14} color={C.green} />}
-              <Text style={s.link}>{mode === "timeline" ? "Liste" : "Zeitplan"}</Text>
+              {mode === "timeline" ? <LayoutList size={14} color={C.muted} /> : <Rows3 size={14} color={C.muted} />}
+              <Text style={[s.link, { color: C.muted }]}>{mode === "timeline" ? "Liste" : "Zeitplan"}</Text>
             </Pressable>
           </View>
         </View>
         <WeekStrip day={day} select={setSelected} />
-        <View style={{ marginTop: 14 }}>{mode === "timeline" ? <DayTimeline day={day} compact /> : <TaskList day={day} />}</View>
+        <View style={{ marginTop: 10 }}>{mode === "timeline" ? <DayTimeline day={day} compact /> : <TaskList day={day} />}</View>
       </View>
       {side && (
         <View style={{ width: 300, gap: 20 }}>
@@ -615,9 +616,12 @@ function TodayContent() {
 }
 
 export function TodayScreen() {
+  const today = useToday();
+  const [selected, setSelected] = useState<string | null>(null);
+  const day = selected || today;
   return (
-    <Shell title="Dein Tag" subtitle="Uni, Training, Lernen – alles an einem Ort." header={false}>
-      <TodayContent />
+    <Shell title="Dein Tag" subtitle="Uni, Training, Lernen – alles an einem Ort." header={false} bottom={<QuickAdd day={day} />}>
+      <TodayContent day={day} setSelected={setSelected} />
     </Shell>
   );
 }

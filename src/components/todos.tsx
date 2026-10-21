@@ -2,12 +2,12 @@ import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeInDown, FadeOut, LinearTransition } from "react-native-reanimated";
-import { Archive, Bell, Check, ChevronDown, ChevronRight, Clock3, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react-native";
+import { Archive, Bell, Check, ChevronDown, ChevronRight, Clock3, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react-native";
 import { dateKey, localStamp, newId, shiftDay, validDate, type RemindMode, type Todo } from "@/lib/planner";
 import { defaultRemind, dueLabel, remindLabel, remindModes, sortTodos, todoState, type TodoState } from "@/lib/todos";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
-import { Button, C, Chip, Field, Pill, Sheet, Shell, s } from "./planner-ui";
+import { Button, C, Chip, Field, Sheet, Shell, s } from "./planner-ui";
 
 const stateStyle: Record<TodoState, { label: string; color: string }> = {
   overdue: { label: "Überfällig", color: "#FF6B78" },
@@ -39,7 +39,7 @@ export function TodoRow({ todo, onEdit }: { todo: Todo; onEdit?: () => void }) {
   const remind = remindLabel(todo);
   const done = !!todo.doneAt;
   return (
-    <Animated.View layout={LinearTransition} exiting={FadeOut.duration(200)} style={[s.row, { gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: "#2A2B32" }]}>
+    <Animated.View layout={LinearTransition} exiting={FadeOut.duration(200)} style={[s.row, { gap: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: "#1A1A1F" }]}>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
@@ -57,10 +57,10 @@ export function TodoRow({ todo, onEdit }: { todo: Todo; onEdit?: () => void }) {
           justifyContent: "center",
         }}
       >
-        {done && <Check size={14} color="white" strokeWidth={3} />}
+        {done && <Check size={14} color={C.onAccent} strokeWidth={3} />}
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={todo.title + " bearbeiten"} onPress={onEdit} disabled={!onEdit} style={{ flex: 1, minWidth: 0, gap: 4 }}>
-        <Text style={[s.body, { fontSize: 15 }, done && { color: C.muted, textDecorationLine: "line-through" }]} numberOfLines={2}>
+        <Text style={[s.body, { fontSize: 17, fontWeight: "500" }, done && { color: C.muted, textDecorationLine: "line-through" }]} numberOfLines={2}>
           {todo.title}
         </Text>
         {(todo.due || remind || done) && (
@@ -242,9 +242,8 @@ function TodosContent() {
   }
   return (
     <>
-      <View style={[s.card, { padding: 10, paddingLeft: 16, marginBottom: 18 }]}>
+      <View style={{ backgroundColor: "#17171B", borderRadius: 16, paddingLeft: 16, paddingRight: 6, marginBottom: 6 }}>
         <View style={[s.row, { gap: 8 }]}>
-          <Plus size={18} color={C.green} />
           <TextInput
             value={text}
             onChangeText={setText}
@@ -259,7 +258,7 @@ function TodosContent() {
             accessibilityRole="button"
             accessibilityLabel="Endzeit und Erinnerung festlegen"
             onPress={() => setEditing({ draft: text })}
-            style={{ width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#2A2B31" }}
+            style={{ width: 40, height: 40, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#232328" }}
           >
             <SlidersHorizontal size={17} color={C.ink} />
           </Pressable>
@@ -270,7 +269,7 @@ function TodosContent() {
             onPress={add}
             style={{ width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: text.trim() ? C.button : "#2A2B31" }}
           >
-            <Check size={18} color="white" />
+            <Check size={18} color={text.trim() ? C.onAccent : C.muted} />
           </Pressable>
         </View>
       </View>
@@ -281,14 +280,14 @@ function TodosContent() {
         </Pressable>
       )}
       {groups.length ? (
-        <View style={{ gap: 16 }}>
+        <View>
           {groups.map(({ g, items }) => (
             <Animated.View key={g} entering={FadeInDown} layout={LinearTransition}>
-              <View style={[s.row, { marginBottom: 8, paddingHorizontal: 4 }]}>
-                <Text style={{ color: stateStyle[g].color, fontSize: 11, fontWeight: "800", letterSpacing: 1.2 }}>{stateStyle[g].label.toUpperCase()}</Text>
-                <Pill bg="#2A2B32" color={stateStyle[g].color}>{items.length}</Pill>
+              <View style={[s.row, { paddingTop: 22, paddingBottom: 2 }]}>
+                <Text style={{ color: stateStyle[g].color, fontSize: 12, fontWeight: "700", letterSpacing: 1.4 }}>{stateStyle[g].label.toUpperCase()}</Text>
+                <Text style={{ color: "#6F6D76", fontSize: 12 }}>{items.length}</Text>
               </View>
-              <View style={s.card}>
+              <View>
                 {items.map((t) => (
                   <TodoRow key={t.id} todo={t} onEdit={() => setEditing({ todo: t })} />
                 ))}
@@ -371,12 +370,12 @@ export function DueTodos() {
   if (!due.length) return null;
   return (
     <View style={{ marginBottom: 16 }}>
-      <Pressable onPress={() => router.push("/todos" as "/")} style={[s.row, { marginBottom: 8, paddingHorizontal: 4 }]}>
-        <Text style={[s.h3, { flex: 1 }]}>Heute fällig</Text>
+      <Pressable onPress={() => router.push("/todos" as "/")} style={[s.row, { marginBottom: 2 }]}>
+        <Text style={[s.eyebrow, { flex: 1 }]}>HEUTE FÄLLIG</Text>
         <Text style={s.link}>Alle To-dos</Text>
         <ChevronRight size={14} color={C.green} />
       </Pressable>
-      <View style={s.card}>
+      <View>
         {due.slice(0, 4).map((t) => (
           <TodoRow key={t.id} todo={t} onEdit={() => router.push("/todos" as "/")} />
         ))}

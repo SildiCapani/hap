@@ -14,7 +14,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
     <View style={{ gap: 10 }}>
       <View style={s.row}>
         <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: C.button, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: "white", fontWeight: "800", fontSize: 12 }}>{n}</Text>
+          <Text style={{ color: C.onAccent, fontWeight: "800", fontSize: 12 }}>{n}</Text>
         </View>
         <Text style={s.h3}>{title}</Text>
       </View>

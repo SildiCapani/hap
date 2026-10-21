@@ -389,7 +389,7 @@ function ModuleImport({ close }: { close: () => void }) {
               <View key={r.name + i} style={{ gap: 8, padding: 12, borderRadius: 12, backgroundColor: r.on ? "#22232A" : "#1A1B20" }}>
                 <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: r.on }} onPress={() => set({ on: !r.on })} style={s.row}>
                   <View style={[s.checkbox, r.on && { backgroundColor: C.button, borderColor: C.button }]}>
-                    {r.on && <Check size={14} color="white" strokeWidth={3} />}
+                    {r.on && <Check size={14} color={C.onAccent} strokeWidth={3} />}
                   </View>
                   <Text style={[s.h3, { flex: 1 }]}>{r.name}</Text>
                   <Pill>{r.exam}</Pill>
@@ -477,7 +477,7 @@ function TodayPlan() {
               onPress={() => router.push(("/focus?exam=" + x.exam.id) as "/")}
               style={[s.filter, { backgroundColor: C.button, borderColor: C.button }]}
             >
-              <Play size={14} color="white" />
+              <Play size={14} color={C.onAccent} />
             </Pressable>
           </Animated.View>
         );
