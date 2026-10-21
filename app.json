@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#121316",
+        "backgroundColor": "#0B0B0D",
         "foregroundImage": "./assets/images/logo.png"
       },
       "predictiveBackGestureEnabled": false
@@ -22,8 +22,8 @@
       "shortName": "Hap",
       "display": "standalone",
       "bundler": "metro",
-      "themeColor": "#121316",
-      "backgroundColor": "#121316",
+      "themeColor": "#0B0B0D",
+      "backgroundColor": "#0B0B0D",
       "favicon": "./assets/images/logo.png",
       "output": "single"
     },
@@ -32,7 +32,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#121316",
+          "backgroundColor": "#0B0B0D",
           "image": "./assets/images/logo.png",
           "imageWidth": 76
         }

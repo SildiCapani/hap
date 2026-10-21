@@ -7,13 +7,32 @@
     <title>%WEB_TITLE%</title>
     <!-- Home screen app: name, logo and full-screen look on iOS and Android. -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#121316" />
+    <meta name="theme-color" content="#0B0B0D" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Hap" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <script>
+      // iOS home screen apps with a translucent status bar report a window
+      // height without the status bar but draw from the very top, which left
+      // a gap below the tab bar. There the app fills the whole screen, so use
+      // the real screen height instead.
+      (function () {
+        var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        var standalone = navigator.standalone === true || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+        if (!ios || !standalone) return;
+        function fit() {
+          var portrait = window.innerHeight >= window.innerWidth;
+          var full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+          document.documentElement.style.setProperty("--app-height", Math.max(full, window.innerHeight) + "px");
+        }
+        fit();
+        window.addEventListener("resize", fit);
+        window.addEventListener("orientationchange", function () {
+          setTimeout(fit, 300);
+        });
+      })();
       // Undo the scroll iOS applies for the keyboard once it closes.
       window.addEventListener("focusout", function () {
         setTimeout(function () {
@@ -34,8 +53,8 @@
       /* These styles make the body full-height */
       html,
       body {
-        height: 100%;
-        background-color: #121316;
+        height: var(--app-height, 100%);
+        background-color: #0B0B0D;
       }
       /* These styles disable body scrolling if you are using <ScrollView> */
       body {
@@ -56,9 +75,8 @@
         position: fixed;
         top: 0;
         right: 0;
-        bottom: 0;
         left: 0;
-        height: auto;
+        height: var(--app-height, 100%);
       }
     </style>
   </head>
