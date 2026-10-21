@@ -9,8 +9,57 @@ export type FoodEstimate = Pick<FoodEntry, "name" | "kcal" | "protein" | "carbs"
   items: (FoodEntry["items"][number] & { protein: number; carbs: number; fat: number })[];
 };
 
-// Opens camera or gallery and returns a JPEG data URL of at most 1024 px,
-// small enough to upload quickly and cheap to analyse.
+const MAX_SIDE = 1024;
+const MAX_BYTES = 600 * 1024;
+
+// Browsers: draw the photo straight into a small canvas. The full-size image
+// (12–48 MP on current iPhones) is never put on a canvas, which Safari refuses
+// above ~16 MP, and the result is re-encoded until it is small enough.
+async function compressWeb(asset: ImagePicker.ImagePickerAsset): Promise<string> {
+  const blob = asset.file ?? (await (await fetch(asset.uri)).blob());
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("Das Foto-Format kann dieser Browser nicht lesen. Stell in den iPhone-Einstellungen unter Kamera → Formate auf „Maximale Kompatibilität“."));
+      el.src = url;
+    });
+    let side = MAX_SIDE;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const scale = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.72, 0.6, 0.5]) {
+        const data = canvas.toDataURL("image/jpeg", quality);
+        if (data.length * 0.75 <= MAX_BYTES) return data;
+      }
+      side = Math.round(side * 0.75);
+    }
+    throw new Error("Das Foto ließ sich nicht verkleinern. Versuch es mit einem Screenshot.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function compressNative(asset: ImagePicker.ImagePickerAsset): Promise<string> {
+  const longest = Math.max(asset.width || 0, asset.height || 0);
+  const context = ImageManipulator.manipulate(asset.uri);
+  // Resize along the longer side so portrait photos shrink as well.
+  if (!longest || longest > MAX_SIDE)
+    context.resize(asset.height > asset.width ? { width: null, height: MAX_SIDE } : { width: MAX_SIDE, height: null });
+  const image = await context.renderAsync();
+  for (const compress of [0.7, 0.55, 0.4]) {
+    const saved = await image.saveAsync({ format: SaveFormat.JPEG, compress, base64: true });
+    if (saved.base64 && (saved.base64.length * 0.75 <= MAX_BYTES || compress === 0.4)) return "data:image/jpeg;base64," + saved.base64;
+  }
+  throw new Error("Das Foto konnte nicht verarbeitet werden.");
+}
+
+// Opens camera or gallery and returns a JPEG data URL of at most 1024 px and
+// about 600 KB – small enough to upload quickly and cheap to analyse.
 export async function pickPhoto(source: "camera" | "library"): Promise<string | null> {
   if (Platform.OS !== "web") {
     const permission =
@@ -19,18 +68,14 @@ export async function pickPhoto(source: "camera" | "library"): Promise<string | 
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) throw new Error("Bitte erlaube Hap den Zugriff auf " + (source === "camera" ? "die Kamera." : "deine Fotos."));
   }
-  const options: ImagePicker.ImagePickerOptions = { mediaTypes: "images", quality: 0.9 };
+  const options: ImagePicker.ImagePickerOptions = { mediaTypes: "images", quality: 0.8 };
   const result =
     source === "camera"
       ? await ImagePicker.launchCameraAsync(options)
       : await ImagePicker.launchImageLibraryAsync(options);
   const asset = result.canceled ? null : result.assets?.[0];
   if (!asset) return null;
-  const context = ImageManipulator.manipulate(asset.uri);
-  if (asset.width > 1024) context.resize({ width: 1024, height: null });
-  const image = await context.renderAsync();
-  const saved = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.7, base64: true });
-  return saved.base64 ? "data:image/jpeg;base64," + saved.base64 : null;
+  return Platform.OS === "web" ? compressWeb(asset) : compressNative(asset);
 }
 
 export async function scanFood(
@@ -48,6 +93,7 @@ export async function scanFood(
   if (response.status === 401) return "Der App-Zugang stimmt nicht mit HAP_ACCESS_TOKEN auf Netlify überein.";
   if (response.status === 429) return "Tageslimit für Foto-Analysen erreicht (schützt vor Kosten). Morgen geht es weiter – oder trag die Mahlzeit manuell ein.";
   if (response.status === 503 || response.status === 404) return "Die Analyse ist auf Netlify noch nicht verfügbar (neu deployen, OPENAI_API_KEY prüfen).";
+  if (response.status === 400 || response.status === 413) return "Das Foto konnte nicht übertragen werden. Versuch es nochmal oder mach einen Screenshot davon.";
   if (!response.ok) return "Die KI konnte das Foto gerade nicht auswerten. Versuch es nochmal oder trag es manuell ein.";
   return (await response.json()) as FoodEstimate;
 }
