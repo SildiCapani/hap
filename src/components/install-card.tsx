@@ -111,7 +111,7 @@ export function InstallCard({ dismissible = true }: { dismissible?: boolean }) {
           ].map(([n, label, icon]) => (
             <View key={String(n)} style={s.row}>
               <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: C.button, alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ color: "white", fontSize: 11, fontWeight: "700" }}>{n}</Text>
+                <Text style={{ color: C.onAccent, fontSize: 11, fontWeight: "700" }}>{n}</Text>
               </View>
               <Text style={[s.body, { flex: 1 }]}>{label}</Text>
               {icon ? <Share size={16} color={C.green} /> : null}

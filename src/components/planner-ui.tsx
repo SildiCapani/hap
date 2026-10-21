@@ -80,16 +80,18 @@ import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 
 export const C = {
-  bg: "#121316",
-  white: "#1C1D22",
-  ink: "#F1F0F3",
-  muted: "#A5A3AE",
-  line: "#303139",
-  green: "#F07B83",
-  pale: "#342229",
-  lime: "#FFD0D5",
-  button: "#B52F40",
-  hero: "#441D27",
+  bg: "#0B0B0D",
+  white: "#141417",
+  ink: "#F4F3F1",
+  muted: "#9C9AA3",
+  line: "#1E1E23",
+  green: "#FF7A66",
+  pale: "#2B1B19",
+  lime: "#FFD0C8",
+  button: "#FF7A66",
+  hero: "#17171B",
+  // Text and icons on the accent color (white would be too faint there).
+  onAccent: "#0B0B0D",
 };
 const icons: Record<string, LucideIcon> = {
   graduation: GraduationCap,
@@ -185,13 +187,13 @@ export function Button({
       {Component && (
         <Component
           size={17}
-          color={danger ? "#F2A0A5" : quiet ? C.green : "white"}
+          color={danger ? "#F2A0A5" : quiet ? C.ink : C.onAccent}
         />
       )}
       <Text
         style={[
           s.buttonText,
-          quiet && { color: C.green },
+          quiet && { color: C.ink, fontWeight: "600" },
           danger && { color: "#F2A0A5" },
         ]}
       >
@@ -348,11 +350,14 @@ export function Shell({
   title,
   subtitle,
   header = true,
+  bottom,
 }: {
   children: ReactNode;
   title: string;
   subtitle: string;
   header?: boolean;
+  // Pinned above the tab bar on phones (e.g. the quick entry on Heute).
+  bottom?: ReactNode;
 }) {
   const { width } = useWindowDimensions();
   const wide = width >= 1000;
@@ -442,12 +447,9 @@ export function Shell({
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <View
-            style={[
-              s.topbar,
-              mobile && { paddingHorizontal: 18, height: 56 },
-            ]}
-          >
+          {/* Phones show no top bar: every page starts with its own title. */}
+          {!mobile && (
+          <View style={s.topbar}>
             {!wide ? (
               <View style={[s.brand, { gap: 8 }]}>
                 <BrandMark size={mobile ? 26 : 31} />
@@ -487,6 +489,7 @@ export function Shell({
               </Pressable>
             </View>
           </View>
+          )}
           <ActiveBanner path={path} />
           {error ? (
             <View style={s.errorBar}>
@@ -513,8 +516,8 @@ export function Shell({
                 s.scrollContent,
                 mobile && {
                   padding: 16,
-                  paddingTop: 18,
-                  paddingBottom: 96 + insets.bottom,
+                  paddingTop: 14,
+                  paddingBottom: (bottom ? 160 : 96) + insets.bottom,
                 },
                 !wide && !mobile && { paddingBottom: 110 },
               ]}
@@ -549,9 +552,15 @@ export function Shell({
                     )}
                   </View>
                 )}
+                {!mobile && bottom}
                 {children}
               </View>
             </GestureScrollView>
+          )}
+          {mobile && bottom && (
+            <View style={{ position: "absolute", left: 0, right: 0, bottom: 54 + Math.max(10, insets.bottom), paddingHorizontal: 12, paddingVertical: 8, backgroundColor: C.bg }}>
+              {bottom}
+            </View>
           )}
           {!wide && (
             <View
@@ -576,22 +585,17 @@ export function Shell({
                       }}
                       style={s.mobileNavItem}
                     >
-                      <View
-                        style={[
-                          s.mobileNavIcon,
-                          active && { backgroundColor: C.pale },
-                        ]}
-                      >
+                      <View style={s.mobileNavIcon}>
                         <n.icon
                           size={21}
-                          color={active ? C.green : C.muted}
-                          strokeWidth={active ? 2.3 : 1.8}
+                          color={active ? C.ink : "#6F6D76"}
+                          strokeWidth={active ? 2.4 : 1.8}
                         />
                       </View>
                       <Text
                         style={{
-                          fontSize: 10,
-                          color: active ? C.ink : C.muted,
+                          fontSize: 11,
+                          color: active ? C.ink : "#6F6D76",
                           fontWeight: active ? "700" : "500",
                         }}
                       >
@@ -642,7 +646,7 @@ function TaskRow({ task, day }: { task: Task; day: string }) {
           done && { backgroundColor: C.button, borderColor: C.button },
         ]}
       >
-        {done && <Check size={15} color="white" strokeWidth={3} />}
+        {done && <Check size={15} color={C.onAccent} strokeWidth={3} />}
       </Pressable>
       <Pressable
         accessibilityRole="button"
@@ -715,7 +719,7 @@ export function WeekStrip({
                 .toLocaleDateString("de-DE", { weekday: "short" })
                 .replace(".", "")}
             </Text>
-            <Text style={[s.dayNumber, d === day && { color: "white" }]}>
+            <Text style={[s.dayNumber, d === day && { color: C.onAccent }]}>
               {parseDate(d).getDate()}
             </Text>
             <View
@@ -1548,27 +1552,27 @@ export const s = StyleSheet.create({
     gap: 16,
     marginBottom: 28,
   },
-  h1: { color: C.ink, fontSize: 32, fontWeight: "700", letterSpacing: -1.2 },
-  h2: { color: C.ink, fontSize: 18, fontWeight: "600", letterSpacing: -0.4 },
-  h3: { color: C.ink, fontSize: 14, fontWeight: "600" },
-  body: { color: C.ink, fontSize: 13 },
-  muted: { color: C.muted, fontSize: 12 },
-  micro: { color: C.muted, fontSize: 10 },
-  eyebrow: { fontSize: 9, letterSpacing: 1.1, color: C.muted },
+  h1: { color: C.ink, fontSize: 36, fontWeight: "800", letterSpacing: -1.2 },
+  h2: { color: C.ink, fontSize: 20, fontWeight: "700", letterSpacing: -0.5 },
+  h3: { color: C.ink, fontSize: 15, fontWeight: "600" },
+  body: { color: C.ink, fontSize: 15 },
+  muted: { color: C.muted, fontSize: 13 },
+  micro: { color: C.muted, fontSize: 12 },
+  eyebrow: { fontSize: 12, fontWeight: "700", letterSpacing: 1.4, color: "#6F6D76" },
   button: {
     backgroundColor: C.button,
     paddingHorizontal: 18,
     paddingVertical: 13,
-    borderRadius: 9,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    minHeight: 43,
+    minHeight: 48,
   },
-  quietButton: { backgroundColor: C.pale },
-  buttonText: { color: "white", fontSize: 12, fontWeight: "600" },
-  link: { color: C.green, fontSize: 11, fontWeight: "600" },
+  quietButton: { backgroundColor: "#1C1C21" },
+  buttonText: { color: C.onAccent, fontSize: 14, fontWeight: "700" },
+  link: { color: C.green, fontSize: 13, fontWeight: "600" },
   hero: {
     backgroundColor: C.hero,
     borderRadius: 18,
@@ -1620,7 +1624,7 @@ export const s = StyleSheet.create({
     backgroundColor: C.white,
     borderWidth: 1,
     borderColor: C.line,
-    borderRadius: 15,
+    borderRadius: 18,
     overflow: "hidden",
   },
   pill: {
@@ -1631,9 +1635,7 @@ export const s = StyleSheet.create({
   },
   pillText: { fontSize: 10, fontWeight: "600" },
   weekStrip: {
-    backgroundColor: C.white,
-    borderWidth: 1,
-    borderColor: C.line,
+    backgroundColor: "transparent",
     borderRadius: 13,
     flexDirection: "row",
     alignItems: "center",
@@ -1658,15 +1660,16 @@ export const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 9,
     paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: C.line,
-    borderRadius: 7,
+    borderRadius: 12,
     backgroundColor: C.white,
+    minHeight: 38,
   },
-  filterActive: { backgroundColor: C.pale, borderColor: "#5A3441" },
-  filterText: { color: C.muted, fontSize: 11 },
+  filterActive: { backgroundColor: C.pale, borderColor: C.green },
+  filterText: { color: C.muted, fontSize: 13 },
   groupLabel: {
     fontSize: 8,
     color: "#A79DAE",
@@ -1755,10 +1758,10 @@ export const s = StyleSheet.create({
     left: 0,
     right: 0,
     flexDirection: "row",
-    backgroundColor: "#17181C",
+    backgroundColor: C.bg,
     borderTopWidth: 1,
     borderColor: C.line,
-    paddingTop: 8,
+    paddingTop: 6,
     justifyContent: "space-around",
   },
   mobileNavItem: { alignItems: "center", gap: 3, flex: 1, minHeight: 48 },
@@ -1802,12 +1805,12 @@ export const s = StyleSheet.create({
   label: { color: "#C1BDC9", fontSize: 11, fontWeight: "600", marginBottom: 9 },
   input: {
     borderWidth: 1,
-    borderColor: "#3B3B45",
-    borderRadius: 9,
+    borderColor: "#26262C",
+    borderRadius: 14,
     padding: 12,
     fontSize: 16,
     color: C.ink,
-    backgroundColor: "#18191E",
+    backgroundColor: "#141417",
     minHeight: 46,
   },
   categoryOption: {

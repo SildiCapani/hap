@@ -32,7 +32,9 @@ import {
   tasksFor,
   totalXp,
 } from "@/lib/planner";
+import { router } from "expo-router";
 import { usePlanner } from "@/lib/store";
+import { tap } from "@/lib/notify";
 import { agenda } from "@/lib/agenda";
 import { hoursLabel, studyStreak } from "@/lib/study";
 import { trainingStreak, weekSummary } from "@/lib/training";
@@ -62,153 +64,109 @@ function CalendarContent() {
     d.setMonth(d.getMonth() + n);
     setMonth(dateKey(d).slice(0, 7));
   }
+  const square = { width: 40, height: 40, borderRadius: 12, backgroundColor: "#17171B", alignItems: "center", justifyContent: "center" } as const;
+  const wideCells = width >= 680;
   return (
     <>
-      <View style={[s.card, { padding: width < 680 ? 12 : 26 }]}>
-        <View style={[s.sectionHeading, { marginBottom: 25 }]}>
-          <Text style={s.h2}>
-            {parseDate(first).toLocaleDateString("de-DE", {
-              month: "long",
-              year: "numeric",
-            })}
-          </Text>
-          <View style={s.row}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setMonth(today.slice(0, 7));
-                setDay(today);
-              }}
-              style={s.filter}
-            >
-              <Text style={s.link}>Heute</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Vorheriger Monat"
-              onPress={() => move(-1)}
-              style={s.arrow}
-            >
-              <ChevronLeft size={20} color={C.green} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Nächster Monat"
-              onPress={() => move(1)}
-              style={s.arrow}
-            >
-              <ChevronRight size={20} color={C.green} />
-            </Pressable>
-          </View>
-        </View>
-        <View style={{ flexDirection: "row" }}>
-          {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => (
-            <Text key={d} style={[s.calendarWeekLabel, { width: "14.2857%" }]}>
-              {d}
-            </Text>
-          ))}
-        </View>
-        <View style={s.calendarGrid}>
-          {Array.from({ length: count }, (_, i) => shiftDay(start, i)).map(
-            (d) => {
-              const items = agenda(state, d),
-                // Travel blocks only belong in the day view.
-                tasks = [...items.allDay, ...items.timed.filter((i) => i.kind !== "travel")],
-                p = progress(state, d);
-              return (
-                <Pressable
-                  key={d}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    parseDate(d).toLocaleDateString("de-DE") +
-                    ", " +
-                    tasks.length +
-                    " Aufgaben"
-                  }
-                  onPress={() => {
-                    setDay(d);
-                    setMonth(d.slice(0, 7));
-                  }}
-                  style={[
-                    s.calendarCell,
-                    width < 680 && { minHeight: 66, padding: 6 },
-                    d === day && { backgroundColor: C.pale },
-                    d.slice(0, 7) !== month && { opacity: 0.38 },
-                  ]}
-                >
-                  <View
-                    style={[
-                      s.calendarNumber,
-                      d === today && { backgroundColor: C.button },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: d === today ? "white" : C.ink,
-                        fontWeight: d === day || d === today ? "700" : "400",
-                      }}
-                    >
-                      {parseDate(d).getDate()}
-                    </Text>
-                  </View>
-                  {width >= 680 ? (
-                    tasks.slice(0, 3).map((t) => (
-                      <View
-                        key={t.key}
-                        style={[s.calendarTask, { backgroundColor: t.pale }]}
-                      >
-                        <Text
-                          numberOfLines={1}
-                          style={{ color: t.color, fontSize: 10 }}
-                        >
-                          {t.done ? "✓ " : ""}
-                          {t.start || t.end
-                            ? String(Math.floor(t.start / 60)).padStart(2, "0") +
-                              ":" +
-                              String(t.start % 60).padStart(2, "0") +
-                              " "
-                            : ""}
-                          {t.title}
-                        </Text>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={[s.row, { gap: 3, marginTop: 5 }]}>
-                      {Array.from(new Set(tasks.map((t) => t.color)))
-                        .slice(0, 4)
-                        .map((c) => (
-                          <View
-                            key={c}
-                            style={[s.dayDot, { backgroundColor: c }]}
-                          />
-                        ))}
-                    </View>
-                  )}
-                  {width >= 680 && tasks.length > 3 && (
-                    <Text style={[s.micro, { fontSize: 9 }]}>
-                      +{tasks.length - 3} weitere
-                    </Text>
-                  )}
-                  {p.perfect && (
-                    <Check
-                      size={12}
-                      color={C.green}
-                      style={{ position: "absolute", right: 6, top: 8 }}
-                    />
-                  )}
-                </Pressable>
-              );
-            },
-          )}
+      <View style={[s.row, { justifyContent: "space-between" }]}>
+        <Pressable accessibilityRole="link" accessibilityLabel="Zurück zu Heute" onPress={() => router.push("/")} style={square}>
+          <ChevronLeft size={18} color={C.ink} />
+        </Pressable>
+        <View style={[s.row, { gap: 8 }]}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setMonth(today.slice(0, 7));
+              setDay(today);
+            }}
+            style={[square, { width: "auto", paddingHorizontal: 14 }]}
+          >
+            <Text style={{ color: C.ink, fontWeight: "600", fontSize: 14 }}>Heute</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Vorheriger Monat" onPress={() => move(-1)} style={square}>
+            <ChevronLeft size={16} color={C.ink} />
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Nächster Monat" onPress={() => move(1)} style={square}>
+            <ChevronRight size={16} color={C.ink} />
+          </Pressable>
         </View>
       </View>
-      <View style={[s.sectionHeading, { marginTop: 28 }]}>
-        <Text style={[s.h2, { flex: 1 }]}>
+      <Text style={[s.h1, { marginTop: 16, marginBottom: 18 }]}>
+        {parseDate(first).toLocaleDateString("de-DE", { month: "long" })}
+        <Text style={{ color: "#5A5862" }}> {first.slice(0, 4)}</Text>
+      </Text>
+      <View style={{ flexDirection: "row" }}>
+        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => (
+          <Text key={d} style={{ width: "14.2857%", textAlign: "center", color: "#6F6D76", fontSize: 12, paddingBottom: 8 }}>
+            {d}
+          </Text>
+        ))}
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: 4 }}>
+        {Array.from({ length: count }, (_, i) => shiftDay(start, i)).map((d) => {
+          const items = agenda(state, d),
+            // Travel blocks only belong in the day view.
+            tasks = [...items.allDay, ...items.timed.filter((i) => i.kind !== "travel")],
+            p = progress(state, d);
+          const selected = d === day;
+          return (
+            <Pressable
+              key={d}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={parseDate(d).toLocaleDateString("de-DE") + ", " + tasks.length + " Termine"}
+              onPress={() => {
+                tap();
+                setDay(d);
+                setMonth(d.slice(0, 7));
+              }}
+              style={{ width: "14.2857%", paddingHorizontal: 2, opacity: d.slice(0, 7) !== month ? 0.3 : 1 }}
+            >
+              <View
+                style={{
+                  minHeight: wideCells ? 96 : 52,
+                  borderRadius: 14,
+                  backgroundColor: selected ? C.green : "transparent",
+                  borderWidth: d === today && !selected ? 1.5 : 0,
+                  borderColor: C.green,
+                  alignItems: wideCells ? "stretch" : "center",
+                  justifyContent: wideCells ? "flex-start" : "center",
+                  padding: wideCells ? 8 : 0,
+                  gap: 5,
+                }}
+              >
+                <Text style={{ color: selected ? C.onAccent : C.ink, fontWeight: selected || d === today ? "800" : "500", fontSize: 16, textAlign: "center", fontVariant: ["tabular-nums"] }}>
+                  {parseDate(d).getDate()}
+                </Text>
+                {wideCells ? (
+                  tasks.slice(0, 3).map((t) => (
+                    <Text key={t.key} numberOfLines={1} style={{ color: selected ? C.onAccent : t.color, fontSize: 11 }}>
+                      {t.done ? "✓ " : ""}
+                      {t.title}
+                    </Text>
+                  ))
+                ) : (
+                  <View style={[s.row, { gap: 3, height: 5 }]}>
+                    {Array.from(new Set(tasks.map((t) => t.color)))
+                      .slice(0, 3)
+                      .map((c) => (
+                        <View key={c} style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: selected ? C.onAccent : c }} />
+                      ))}
+                  </View>
+                )}
+                {p.perfect && !wideCells && !tasks.length ? <Check size={10} color={C.green} /> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={[s.sectionHeading, { marginTop: 24 }]}>
+        <Text style={[s.eyebrow, { flex: 1 }]}>
           {parseDate(day).toLocaleDateString("de-DE", {
             weekday: "long",
             day: "numeric",
             month: "long",
-          })}
+          }).toUpperCase()}
         </Text>
         <Button quiet icon={Plus} onPress={() => edit(day)}>
           Planen
@@ -225,6 +183,7 @@ export function CalendarScreen() {
     <Shell
       title="Dein Kalender"
       subtitle="Deine Woche bekommt einen klaren Rhythmus."
+      header={false}
     >
       <CalendarContent />
     </Shell>

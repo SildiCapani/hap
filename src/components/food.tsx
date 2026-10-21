@@ -243,7 +243,7 @@ export function FoodTracker() {
 
       <View style={[s.row, { gap: 8 }]}>
         <Pressable accessibilityRole="button" disabled={!!busy} onPress={() => void photo("camera")} style={({ pressed }) => [st.action, { backgroundColor: C.button, opacity: pressed || busy ? 0.75 : 1 }]}>
-          <Camera size={20} color="white" />
+          <Camera size={20} color={C.onAccent} />
           <Text style={st.actionText}>Foto</Text>
         </Pressable>
         <Pressable accessibilityRole="button" disabled={!!busy} onPress={() => void photo("library")} style={({ pressed }) => [st.action, { opacity: pressed || busy ? 0.75 : 1 }]}>
@@ -376,5 +376,5 @@ const st = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.line,
   },
-  actionText: { color: "white", fontWeight: "700", fontSize: 13 },
+  actionText: { color: C.onAccent, fontWeight: "700", fontSize: 13 },
 });

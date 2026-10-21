@@ -214,7 +214,7 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
     update((prev) => ({ ...prev, done: { ...prev.done, [key]: !prev.done[key] } }));
   }
   return (
-    <View style={[s.card, { paddingVertical: 14 }]}>
+    <View style={{ paddingVertical: 4 }}>
       {allDay.length > 0 && (
         <View style={{ gap: 6, paddingHorizontal: 14, paddingBottom: 12 }}>
           {allDay.map((a) => (
@@ -271,14 +271,14 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
               right: 0,
               height: HOUR,
               flexDirection: "row",
-              backgroundColor: pressed ? "#22232A" : "transparent",
+              backgroundColor: pressed ? "#141417" : "transparent",
             })}
           >
-            <Text style={{ width: GUTTER, textAlign: "right", paddingRight: 10, color: "#77737F", fontSize: 10, marginTop: -6 }}>
+            <Text style={{ width: GUTTER, textAlign: "right", paddingRight: 10, color: "#5A5862", fontSize: 11, marginTop: -7, fontVariant: ["tabular-nums"] }}>
               {String(h).padStart(2, "0")}:00
             </Text>
-            <View style={{ flex: 1, borderTopWidth: 1, borderTopColor: "#2A2B32" }}>
-              <View style={{ position: "absolute", top: HOUR / 2, left: 0, right: 0, borderTopWidth: 1, borderTopColor: "#1F2026" }} />
+            <View style={{ flex: 1, borderTopWidth: 1, borderTopColor: "#1A1A1F" }}>
+              <View style={{ position: "absolute", top: HOUR / 2, left: 0, right: 0, borderTopWidth: 1, borderTopColor: "#121215" }} />
             </View>
           </Pressable>
         ))}
@@ -313,8 +313,8 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
                 <View
                   style={{
                     flex: 1,
-                    backgroundColor: item.pale,
-                    borderRadius: 8,
+                    backgroundColor: item.kind === "travel" ? "transparent" : item.color + "1F",
+                    borderRadius: 10,
                     borderLeftWidth: 3,
                     borderLeftColor: item.color,
                     // Travel blocks are dashed so they read as "on the way", not as appointments.
@@ -331,7 +331,7 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
                       numberOfLines={compact ? 1 : 2}
                       style={{
                         color: "#F1F0F3",
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: "600",
                         textDecorationLine: item.done ? "line-through" : "none",
                       }}
@@ -352,7 +352,7 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
                         ) : item.task ? (
                           <Icon name={item.task.icon} size={11} color={item.color} />
                         ) : null}
-                        <Text numberOfLines={1} style={{ color: item.color, fontSize: 10, flex: 1 }}>
+                        <Text numberOfLines={1} style={{ color: item.color, fontSize: 11, flex: 1 }}>
                           {clock(item.start)}–{clock(item.end)} · {item.sub}
                         </Text>
                       </View>
@@ -396,8 +396,8 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
         </View>
         {day === today && nowMin >= first * 60 && nowMin <= last * 60 && (
           <View pointerEvents="none" style={{ position: "absolute", top: top(nowMin) - 1, left: GUTTER - 6, right: 0, flexDirection: "row", alignItems: "center" }}>
-            <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: "#FF5A6A" }} />
-            <View style={{ flex: 1, height: 2, backgroundColor: "#FF5A6A" }} />
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.green }} />
+            <View style={{ flex: 1, height: 2, backgroundColor: C.green }} />
           </View>
         )}
       </View>

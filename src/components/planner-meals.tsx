@@ -349,7 +349,7 @@ function MealsContent() {
                             ]}
                           >
                             {state.groceries[key] && (
-                              <Check size={15} color="white" />
+                              <Check size={15} color={C.onAccent} />
                             )}
                           </View>
                           <View style={{ flex: 1 }}>

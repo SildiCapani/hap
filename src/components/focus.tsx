@@ -1,24 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View, type DimensionValue } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import Animated, {
-  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withTiming,
   type SharedValue,
   ZoomIn,
   FadeOut,
 } from "react-native-reanimated";
-import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
-import { Coffee, Minus, Pause, Play, Plus, Square } from "lucide-react-native";
+import { Minus, Pause, Play, Plus, Square } from "lucide-react-native";
 import { finishFocus } from "@/lib/planner";
 import { examKinds, hoursLabel, upcomingExams } from "@/lib/study";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
-import { C, Chip, Heading, Pill, Shell, s, useToday } from "./planner-ui";
+import { C, Chip, Shell, s, useToday } from "./planner-ui";
 
 const modes = [
   { label: "Pomodoro", focus: 25, rest: 5 },
@@ -64,81 +61,6 @@ function Burst({ trigger }: { trigger: number }) {
       {pieces.map((p, i) => (
         <Particle key={i} progress={progress} {...p} />
       ))}
-    </View>
-  );
-}
-
-function FocusRing({ fraction, size, running, color, children }: { fraction: number; size: number; running: boolean; color: string; children: React.ReactNode }) {
-  const glow = useSharedValue(0);
-  const spin = useSharedValue(0);
-  useEffect(() => {
-    if (running) {
-      glow.value = withRepeat(withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.sin) }), -1, true);
-      spin.value = withRepeat(withTiming(360, { duration: 24000, easing: Easing.linear }), -1, false);
-    } else {
-      cancelAnimation(glow);
-      cancelAnimation(spin);
-      glow.value = withTiming(0, { duration: 500 });
-    }
-  }, [running, glow, spin]);
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: 0.18 + glow.value * 0.32,
-    transform: [{ scale: 0.9 + glow.value * 0.12 }],
-  }));
-  const spinStyle = useAnimatedStyle(() => ({ transform: [{ rotate: spin.value + "deg" }] }));
-  const counterSpin = useAnimatedStyle(() => ({ transform: [{ rotate: -spin.value * 1.6 + "deg" }] }));
-  const stroke = 14;
-  const r = (size - stroke * 2 - 26) / 2;
-  const circumference = 2 * Math.PI * r;
-  const angle = -Math.PI / 2 + fraction * Math.PI * 2;
-  const c = size / 2;
-  return (
-    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      <Animated.View
-        style={[
-          { position: "absolute", width: size * 0.82, height: size * 0.82, borderRadius: size, backgroundColor: color },
-          Platform.OS === "web" ? ({ filter: "blur(38px)" } as object) : { shadowColor: color, shadowRadius: 40, shadowOpacity: 1 },
-          glowStyle,
-        ]}
-      />
-      <Animated.View style={[StyleSheet.absoluteFill, spinStyle]}>
-        <Svg width={size} height={size}>
-          <Circle cx={c} cy={c} r={size / 2 - 4} stroke="#ffffff22" strokeWidth={1.5} strokeDasharray="2 10" fill="none" />
-        </Svg>
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, counterSpin]}>
-        <Svg width={size} height={size}>
-          <Circle cx={c} cy={c} r={size / 2 - 13} stroke={color + "44"} strokeWidth={1} strokeDasharray="28 18 4 18" fill="none" />
-        </Svg>
-      </Animated.View>
-      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
-        <Defs>
-          <LinearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#FFD0D5" />
-            <Stop offset="1" stopColor={color} />
-          </LinearGradient>
-        </Defs>
-        <Circle cx={c} cy={c} r={r} stroke="#2A2531" strokeWidth={stroke} fill="#15131B" />
-        <Circle
-          cx={c}
-          cy={c}
-          r={r}
-          stroke="url(#ring)"
-          strokeWidth={stroke}
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={circumference + " " + circumference}
-          strokeDashoffset={circumference * (1 - fraction)}
-          transform={"rotate(-90 " + c + " " + c + ")"}
-        />
-        {fraction > 0.002 && (
-          <>
-            <Circle cx={c + Math.cos(angle) * r} cy={c + Math.sin(angle) * r} r={stroke * 0.95} fill={color} opacity={0.35} />
-            <Circle cx={c + Math.cos(angle) * r} cy={c + Math.sin(angle) * r} r={stroke * 0.42} fill="white" />
-          </>
-        )}
-      </Svg>
-      {children}
     </View>
   );
 }
@@ -223,110 +145,118 @@ function FocusContent() {
     update((prev) => finishFocus(prev, elapsed >= 5 ? elapsed : 0));
   }
 
-  const size = Math.min(340, width - 70);
   const mm = Math.floor(leftMs / 60000), ss = Math.floor((leftMs % 60000) / 1000);
-  const color = rest ? "#7FD1A4" : exam ? examKinds[exam.kind].color : "#B9A2F2";
+  const color = rest ? "#7FD1A4" : C.green;
   const sessions = state.focus.filter((f) => f.date === today);
   const todayMin = sessions.reduce((n, f) => n + f.minutes, 0);
+  const digits = Math.min(112, (width - 40) * 0.3);
+  const currentMode = modes.find((m) => m.focus === (active?.minutes ?? minutes));
   return (
     <>
-      <View style={[s.card, { backgroundColor: "#15131B", padding: width < 680 ? 18 : 32, alignItems: "center", gap: 22, overflow: "hidden" }]}>
-        {!active && !rest && (
-          <View style={{ gap: 12, width: "100%", alignItems: "center" }}>
-            <View style={[s.wrap, { justifyContent: "center" }]}>
-              {modes.map((m, i) => (
-                <Chip
-                  key={m.label}
-                  label={m.label + " " + m.focus + "/" + m.rest}
-                  active={mode === i && minutes === m.focus}
-                  onPress={() => {
-                    setMode(i);
-                    setMinutes(m.focus);
-                  }}
-                />
-              ))}
-            </View>
-            <View style={[s.wrap, { justifyContent: "center" }]}>
-              <Chip label="Freies Lernen" active={!examId} onPress={() => setExamId("")} />
-              {exams.map((x) => (
-                <Chip key={x.exam.id} label={x.exam.title} active={examId === x.exam.id} color={examKinds[x.exam.kind].color} onPress={() => setExamId(x.exam.id)} />
-              ))}
-            </View>
-          </View>
-        )}
+      <View style={{ alignItems: "center", paddingTop: 10 }}>
+        <Text style={{ color, fontSize: 12, letterSpacing: 2, fontWeight: "700" }}>
+          {rest ? "PAUSE" : active ? (running ? "FOKUS" : "PAUSIERT") : "BEREIT"}
+          {currentMode && !rest ? " · " + currentMode.label.toUpperCase() + " " + currentMode.focus + "/" + currentMode.rest : ""}
+        </Text>
         <View style={{ alignItems: "center", justifyContent: "center" }}>
-          <FocusRing fraction={fraction} size={size} running={running || !!rest} color={color}>
-            <Text style={{ color: "#A79FB4", fontSize: 11, letterSpacing: 3, fontWeight: "700" }}>
-              {rest ? "PAUSE" : active ? (running ? "FOKUS" : "PAUSIERT") : "BEREIT"}
-            </Text>
-            <Text style={{ color: "white", fontSize: size * 0.2, fontWeight: "800", letterSpacing: -2, fontVariant: ["tabular-nums"] }}>
-              {String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}
-            </Text>
-            <Text numberOfLines={1} style={{ color: color, fontSize: 13, fontWeight: "600", maxWidth: size * 0.6 }}>
-              {rest ? "Kurz bewegen & trinken" : label}
-            </Text>
-            {!active && !rest && (
-              <View style={[s.row, { marginTop: 12 }]}>
-                <Pressable accessibilityLabel="5 Minuten weniger" onPress={() => setMinutes(Math.max(5, minutes - 5))} style={[s.arrow, { backgroundColor: "#2A2531", borderRadius: 20 }]}>
-                  <Minus size={16} color={C.ink} />
-                </Pressable>
-                <Text style={[s.micro, { width: 54, textAlign: "center" }]}>{minutes} Min.</Text>
-                <Pressable accessibilityLabel="5 Minuten mehr" onPress={() => setMinutes(Math.min(180, minutes + 5))} style={[s.arrow, { backgroundColor: "#2A2531", borderRadius: 20 }]}>
-                  <Plus size={16} color={C.ink} />
-                </Pressable>
-              </View>
-            )}
-          </FocusRing>
+          <Text style={{ color: C.ink, fontSize: digits, lineHeight: digits * 1.05, fontWeight: "800", letterSpacing: -digits * 0.045, fontVariant: ["tabular-nums"], marginTop: 14 }}>
+            {String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}
+          </Text>
           <Burst trigger={burst} />
           {reward ? (
-            <Animated.View entering={ZoomIn.springify()} exiting={FadeOut} style={{ position: "absolute", top: -6, backgroundColor: "#342D24", paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 }}>
+            <Animated.View entering={ZoomIn.springify()} exiting={FadeOut} style={{ position: "absolute", top: -8, backgroundColor: "#2A2418", paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 }}>
               <Text style={{ color: "#F3D79B", fontWeight: "700" }}>🎉 {reward}</Text>
             </Animated.View>
           ) : null}
         </View>
-        <View style={[s.row, { gap: 14 }]}>
+        <Text numberOfLines={1} style={{ color: C.ink, fontSize: 18, fontWeight: "600", marginTop: 8 }}>
+          {rest ? "Kurz bewegen & trinken" : label}
+        </Text>
+        {!active && !rest && (
+          <View style={[s.row, { marginTop: 14 }]}>
+            <Pressable accessibilityLabel="5 Minuten weniger" onPress={() => setMinutes(Math.max(5, minutes - 5))} style={st.small}>
+              <Minus size={16} color={C.ink} />
+            </Pressable>
+            <Text style={[s.muted, { width: 64, textAlign: "center" }]}>{minutes} Min.</Text>
+            <Pressable accessibilityLabel="5 Minuten mehr" onPress={() => setMinutes(Math.min(180, minutes + 5))} style={st.small}>
+              <Plus size={16} color={C.ink} />
+            </Pressable>
+          </View>
+        )}
+        <View style={{ width: "100%", maxWidth: 320, marginTop: 30 }}>
+          <View style={{ height: 4, borderRadius: 2, backgroundColor: "#1E1E23", overflow: "hidden" }}>
+            <View style={{ width: (Math.min(1, Math.max(0, fraction)) * 100 + "%") as DimensionValue, height: 4, backgroundColor: color }} />
+          </View>
+        </View>
+        <View style={[s.row, { gap: 16, marginTop: 36 }]}>
           {active || rest ? (
             <>
               {active && (
                 <Pressable accessibilityRole="button" accessibilityLabel={running ? "Pausieren" : "Fortsetzen"} onPress={pause} style={[st.big, { backgroundColor: C.button }]}>
-                  {running ? <Pause size={26} color="white" /> : <Play size={26} color="white" />}
+                  {running ? <Pause size={26} color={C.onAccent} /> : <Play size={26} color={C.onAccent} />}
                 </Pressable>
               )}
-              <Pressable accessibilityRole="button" accessibilityLabel={rest ? "Pause überspringen" : "Beenden"} onPress={stop} style={[st.big, { backgroundColor: "#2A2531" }]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={rest ? "Pause überspringen" : "Beenden"} onPress={stop} style={[st.big, { backgroundColor: "#17171B" }]}>
                 {rest ? <Play size={22} color={C.ink} /> : <Square size={22} color={C.ink} />}
               </Pressable>
             </>
           ) : (
             <Pressable accessibilityRole="button" onPress={start} style={[st.start, { backgroundColor: C.button }]}>
-              <Play size={22} color="white" />
-              <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>Fokus starten</Text>
+              <Play size={22} color={C.onAccent} />
+              <Text style={{ color: C.onAccent, fontSize: 16, fontWeight: "700" }}>Fokus starten</Text>
             </Pressable>
           )}
         </View>
-        <Text style={[s.micro, { textAlign: "center", maxWidth: 420, lineHeight: 18 }]}>
+        <Text style={[s.micro, { textAlign: "center", maxWidth: 300, lineHeight: 18, marginTop: 22 }]}>
           {active
-            ? "Handy umdrehen, Tabs zu. Unter 5 Minuten wird beim Beenden nichts gezählt. Du bekommst eine Benachrichtigung, wenn die Runde vorbei ist."
+            ? "Handy umdrehen. Hap meldet sich, wenn die Runde vorbei ist."
             : rest
               ? "Gönn dir die Pause – danach geht’s mit frischem Kopf weiter."
-              : "Jede Minute Fokus zählt für dein Lernziel und bringt 1 XP."}
+              : "Jede Minute Fokus zählt für dein Lernziel."}
         </Text>
       </View>
-      <View style={[s.card, { padding: 24, marginTop: 22, gap: 12 }]}>
-        <Heading detail={hoursLabel(todayMin) + " heute"}>Deine Fokusrunden</Heading>
+      {!active && !rest && (
+        <View style={{ gap: 10, marginTop: 30 }}>
+          <Text style={s.eyebrow}>MODUS</Text>
+          <View style={s.wrap}>
+            {modes.map((m, i) => (
+              <Chip
+                key={m.label}
+                label={m.label + " " + m.focus + "/" + m.rest}
+                active={mode === i && minutes === m.focus}
+                onPress={() => {
+                  setMode(i);
+                  setMinutes(m.focus);
+                }}
+              />
+            ))}
+          </View>
+          <Text style={[s.eyebrow, { marginTop: 10 }]}>FACH</Text>
+          <View style={s.wrap}>
+            <Chip label="Freies Lernen" active={!examId} onPress={() => setExamId("")} />
+            {exams.map((x) => (
+              <Chip key={x.exam.id} label={x.exam.title} active={examId === x.exam.id} color={examKinds[x.exam.kind].color} onPress={() => setExamId(x.exam.id)} />
+            ))}
+          </View>
+        </View>
+      )}
+      <View style={{ marginTop: 30 }}>
+        <View style={s.sectionHeading}>
+          <Text style={s.eyebrow}>HEUTE · {hoursLabel(todayMin).toUpperCase()}</Text>
+        </View>
         {sessions.length ? (
           sessions
             .slice()
             .reverse()
             .map((f) => (
-              <View key={f.id} style={[s.row, { paddingVertical: 6 }]}>
-                <Coffee size={15} color={C.muted} />
+              <View key={f.id} style={[s.row, { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#1A1A1F" }]}>
+                <Text style={[s.muted, { width: 46, fontVariant: ["tabular-nums"] }]}>{f.start}</Text>
                 <Text style={[s.body, { flex: 1 }]}>{f.label}</Text>
-                <Pill>{f.start}</Pill>
                 <Text style={s.muted}>{f.minutes} Min.</Text>
               </View>
             ))
         ) : (
-          <Text style={s.muted}>Noch keine Runde heute. Die erste ist die wichtigste.</Text>
+          <Text style={[s.muted, { marginTop: 8 }]}>Noch keine Runde heute. Die erste ist die wichtigste.</Text>
         )}
       </View>
     </>
@@ -334,6 +264,7 @@ function FocusContent() {
 }
 
 const st = StyleSheet.create({
+  small: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#17171B", alignItems: "center", justifyContent: "center" },
   big: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
   start: { flexDirection: "row", gap: 10, alignItems: "center", paddingHorizontal: 30, height: 58, borderRadius: 29 },
 });
