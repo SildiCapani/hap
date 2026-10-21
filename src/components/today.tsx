@@ -21,10 +21,12 @@ import {
   LayoutList,
   Mic,
   Play,
+  Plus,
   Rows3,
   Send,
   Settings2,
   Wand,
+  X,
 } from "lucide-react-native";
 import {
   categories,
@@ -266,6 +268,10 @@ export function QuickAdd({ day }: { day: string }) {
   const [thinking, setThinking] = useState(false);
   const [proposal, setProposal] = useState<(SmartTask & { on: boolean })[] | null>(null);
   const [listening, setListening] = useState<null | (() => void)>(null);
+  const { width } = useWindowDimensions();
+  // On phones the entry hides behind a + button until it is needed.
+  const collapsible = width < 680;
+  const [open, setOpen] = useState(false);
   const draft = text.trim() ? parseQuick(text, day === today ? today : day) : null;
   // Longer sentences with several steps go to the AI; short ones stay local.
   const complex = /\b(danach|dann|nach der|nach dem|vor der|vor dem|und dann|anschließend)\b|,/i.test(text) || text.trim().split(/\s+/).length > 9;
@@ -273,6 +279,7 @@ export function QuickAdd({ day }: { day: string }) {
     setFlash(message);
     setText("");
     setTimeout(() => setFlash(""), 3500);
+    if (collapsible) setOpen(false);
   }
   function add() {
     if (complex && state.accessToken) return void ask();
@@ -328,10 +335,45 @@ export function QuickAdd({ day }: { day: string }) {
   }
   const cat = draft ? categories[draft.category] : null;
   const ready = !!draft || (complex && !!state.accessToken);
+  if (collapsible && !open)
+    return (
+      <View pointerEvents="box-none" style={{ alignItems: "flex-end" }}>
+        {flash ? (
+          <View style={{ alignSelf: "stretch", backgroundColor: "#17171B", borderRadius: 14, padding: 12, marginBottom: 10 }}>
+            <Text style={[s.micro, { color: "#98C5A9" }]}>✓ {flash}</Text>
+          </View>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Etwas eintragen"
+          onPress={() => {
+            tap("medium");
+            setOpen(true);
+          }}
+          style={({ pressed }) => ({
+            width: 58,
+            height: 58,
+            borderRadius: 29,
+            backgroundColor: C.button,
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [{ scale: pressed ? 0.94 : 1 }],
+            shadowColor: "#000",
+            shadowOpacity: 0.5,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 6,
+          })}
+        >
+          <Plus size={26} color={C.onAccent} strokeWidth={2.6} />
+        </Pressable>
+      </View>
+    );
   return (
-    <View>
+    <Animated.View entering={collapsible ? FadeInDown.duration(180) : undefined} style={collapsible ? { backgroundColor: C.bg, borderRadius: 18, padding: 6, borderWidth: 1, borderColor: C.line } : undefined}>
       <View style={[s.row, { gap: 8, backgroundColor: "#17171B", borderRadius: 16, paddingLeft: 14, paddingRight: 6, minHeight: 52 }]}>
         <TextInput
+          autoFocus={collapsible}
           value={text}
           onChangeText={setText}
           onSubmitEditing={add}
@@ -341,6 +383,11 @@ export function QuickAdd({ day }: { day: string }) {
           accessibilityLabel="Schnelleingabe"
           style={{ flex: 1, color: C.ink, fontSize: 16, paddingVertical: 8, minHeight: 40 }}
         />
+        {collapsible && !text.trim() && (
+          <Pressable accessibilityRole="button" accessibilityLabel="Eingabe schließen" onPress={() => setOpen(false)} hitSlop={8} style={{ width: 32, height: 38, alignItems: "center", justifyContent: "center" }}>
+            <X size={18} color={C.muted} />
+          </Pressable>
+        )}
         {speechAvailable() && (
           <Pressable
             accessibilityRole="button"
@@ -411,7 +458,7 @@ export function QuickAdd({ day }: { day: string }) {
           ))}
         </Sheet>
       )}
-    </View>
+    </Animated.View>
   );
 }
 

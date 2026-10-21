@@ -517,12 +517,20 @@ export function Shell({
                 mobile && {
                   padding: 16,
                   paddingTop: 14,
-                  paddingBottom: (bottom ? 160 : 96) + insets.bottom,
+                  paddingBottom: (bottom ? 150 : 96) + insets.bottom,
                 },
                 !wide && !mobile && { paddingBottom: 110 },
               ]}
             >
               <View style={s.content}>
+                {mobile && (
+                  <View style={[s.brand, { gap: 8, marginBottom: 16 }]}>
+                    <BrandMark size={28} />
+                    <Text style={[s.brandName, { fontSize: 24 }]}>
+                      hap<Text style={{ color: C.green }}>.</Text>
+                    </Text>
+                  </View>
+                )}
                 {header && (
                   <View
                     style={[
@@ -558,7 +566,10 @@ export function Shell({
             </GestureScrollView>
           )}
           {mobile && bottom && (
-            <View style={{ position: "absolute", left: 0, right: 0, bottom: 54 + Math.max(10, insets.bottom), paddingHorizontal: 12, paddingVertical: 8, backgroundColor: C.bg }}>
+            <View
+              pointerEvents="box-none"
+              style={{ position: "absolute", left: 0, right: 0, bottom: 54 + Math.max(10, insets.bottom), paddingHorizontal: 12, paddingVertical: 10 }}
+            >
               {bottom}
             </View>
           )}

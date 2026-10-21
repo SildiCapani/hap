@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, useWindowDimensions, View, type DimensionValue } from "react-native";
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming, Easing } from "react-native-reanimated";
-import { Check, Dumbbell, Flame, Pencil, Play, Plus, Scale, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
+import { Check, Dumbbell, Flame, Minus, Pencil, Play, Plus, Scale, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
 import {
   categories,
   newId,
@@ -88,6 +88,49 @@ export function startWorkout(state: PlannerState, workout: Workout, day: string)
   };
 }
 
+// − value + : tap to adjust, or type in the middle. Fixed widths so a set
+// row always fits a phone screen.
+function Stepper({
+  value,
+  onChange,
+  step,
+  width,
+  label,
+  decimal = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  step: number;
+  width: number;
+  label: string;
+  decimal?: boolean;
+}) {
+  const n = Number(value.replace(",", ".")) || 0;
+  const set = (v: number) => {
+    tap("select");
+    onChange(String(Math.max(0, Math.round(v * 100) / 100)).replace(".", ","));
+  };
+  const button = { width: 32, height: 46, alignItems: "center", justifyContent: "center" } as const;
+  return (
+    <View style={[s.row, { gap: 0, backgroundColor: "#1C1C21", borderRadius: 14 }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label + " verringern"} onPress={() => set(n - step)} style={button}>
+        <Minus size={16} color={C.muted} />
+      </Pressable>
+      <TextInput
+        accessibilityLabel={label}
+        value={value}
+        onChangeText={onChange}
+        selectTextOnFocus
+        keyboardType={decimal ? "decimal-pad" : "number-pad"}
+        style={{ width, minWidth: 0, padding: 0, textAlign: "center", color: C.ink, fontSize: 17, fontWeight: "700", fontVariant: ["tabular-nums"] }}
+      />
+      <Pressable accessibilityRole="button" accessibilityLabel={label + " erhöhen"} onPress={() => set(n + step)} style={button}>
+        <Plus size={16} color={C.muted} />
+      </Pressable>
+    </View>
+  );
+}
+
 function Session({ workout, day }: { workout: Workout; day: string }) {
   const { state, update } = usePlanner();
   const [rest, setRest] = useState<{ endsAt: number; total: number } | null>(null);
@@ -151,10 +194,21 @@ function Session({ workout, day }: { workout: Workout; day: string }) {
           <X size={20} color={C.muted} />
         </Pressable>
       </View>
-      <View style={[s.row, { flexWrap: "wrap" }]}>
-        <Text style={s.micro}>Satzpause:</Text>
+      <View style={[s.row, { gap: 6 }]}>
+        <Text style={[s.micro, { marginRight: 2 }]}>Pause</Text>
         {[60, 90, 120, 180].map((sec) => (
-          <Chip key={sec} label={sec < 120 ? sec + " s" : sec / 60 + " min"} active={restSec === sec} color={sport.color} onPress={() => setRestSec(sec)} />
+          <Pressable
+            key={sec}
+            accessibilityRole="button"
+            accessibilityState={{ selected: restSec === sec }}
+            onPress={() => {
+              tap();
+              setRestSec(sec);
+            }}
+            style={{ flex: 1, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: restSec === sec ? sport.color : "#1C1C21" }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color: restSec === sec ? "#121316" : C.muted }}>{sec < 120 ? sec + " s" : sec / 60 + " min"}</Text>
+          </Pressable>
         ))}
       </View>
       {rest && <RestTimer endsAt={rest.endsAt} total={rest.total} stop={() => setRest(null)} />}
@@ -163,50 +217,54 @@ function Session({ workout, day }: { workout: Workout; day: string }) {
         const last = lastEntry(state, e.name, day);
         return (
           <View key={e.id} style={{ gap: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: C.line }}>
-            <View style={s.sectionHeading}>
-              <Text style={[s.h3, { flex: 1 }]}>{e.name}</Text>
-              <Pill color={sport.color} bg={sport.pale}>{sug.note}</Pill>
-            </View>
-            {last && (
-              <Text style={s.micro}>
-                Letztes Mal ({parseDate(last.date).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}):{" "}
-                {last.sets.map((x) => x.reps + "×" + x.weight).join(", ")}
+            <View style={{ gap: 3 }}>
+              <Text style={[s.h3, { fontSize: 17 }]}>{e.name}</Text>
+              <Text style={{ color: sport.color, fontSize: 12 }}>
+                {sug.note}
+                {last
+                  ? " · zuletzt " + last.sets.map((x) => x.reps + "×" + String(x.weight).replace(".", ",")).join(", ")
+                  : ""}
               </Text>
-            )}
+            </View>
+            <View style={[s.row, { gap: 6, marginTop: 2 }]}>
+              <Text style={[s.micro, { width: 16 }]}>#</Text>
+              <Text style={[s.micro, { width: 114, textAlign: "center" }]}>Gewicht (kg)</Text>
+              <Text style={[s.micro, { width: 94, textAlign: "center" }]}>Wdh.</Text>
+            </View>
             {(sets[e.id] || []).map((x, i) => (
-              <View key={i} style={[s.row, { gap: 8 }]}>
-                <Text style={[s.micro, { width: 18 }]}>{i + 1}</Text>
-                <TextInput
-                  accessibilityLabel={e.name + " Satz " + (i + 1) + " Gewicht"}
+              <View key={i} style={[s.row, { gap: 6, opacity: x.done ? 0.65 : 1 }]}>
+                <Text style={[s.muted, { width: 16, fontWeight: "700" }]}>{i + 1}</Text>
+                <Stepper
+                  label={e.name + " Satz " + (i + 1) + " Gewicht"}
                   value={x.weight}
-                  onChangeText={(v) => change(e.id, i, { weight: v })}
-                  keyboardType="decimal-pad"
-                  style={[s.input, { flex: 1, minHeight: 40, padding: 9, textAlign: "center" }]}
+                  step={2.5}
+                  width={50}
+                  decimal
+                  onChange={(v) => change(e.id, i, { weight: v })}
                 />
-                <Text style={s.micro}>kg</Text>
-                <TextInput
-                  accessibilityLabel={e.name + " Satz " + (i + 1) + " Wiederholungen"}
+                <Stepper
+                  label={e.name + " Satz " + (i + 1) + " Wiederholungen"}
                   value={x.reps}
-                  onChangeText={(v) => change(e.id, i, { reps: v })}
-                  keyboardType="number-pad"
-                  style={[s.input, { flex: 1, minHeight: 40, padding: 9, textAlign: "center" }]}
+                  step={1}
+                  width={30}
+                  onChange={(v) => change(e.id, i, { reps: v })}
                 />
-                <Text style={s.micro}>Wdh.</Text>
                 <Pressable
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: x.done }}
                   accessibilityLabel={"Satz " + (i + 1) + " erledigt"}
                   onPress={() => check(e.id, i)}
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
+                    marginLeft: "auto",
+                    width: 44,
+                    height: 46,
+                    borderRadius: 14,
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: x.done ? sport.color : "#2A2B32",
+                    backgroundColor: x.done ? sport.color : "#1C1C21",
                   }}
                 >
-                  <Check size={18} color={x.done ? "#121316" : C.muted} strokeWidth={3} />
+                  <Check size={20} color={x.done ? "#121316" : C.muted} strokeWidth={3} />
                 </Pressable>
               </View>
             ))}

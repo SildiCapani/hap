@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View, type DimensionValue } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withTiming,
   type SharedValue,
   ZoomIn,
   FadeOut,
 } from "react-native-reanimated";
+import Svg, { Circle } from "react-native-svg";
 import { Minus, Pause, Play, Plus, Square } from "lucide-react-native";
 import { finishFocus } from "@/lib/planner";
 import { examKinds, hoursLabel, upcomingExams } from "@/lib/study";
@@ -61,6 +64,66 @@ function Burst({ trigger }: { trigger: number }) {
       {pieces.map((p, i) => (
         <Particle key={i} progress={progress} {...p} />
       ))}
+    </View>
+  );
+}
+
+// Thin progress ring with a glowing head; while running a soft halo breathes
+// behind it and a dotted outer ring turns slowly.
+function Dial({ fraction, size, running, color, children }: { fraction: number; size: number; running: boolean; color: string; children: ReactNode }) {
+  const breath = useSharedValue(0);
+  const spin = useSharedValue(0);
+  useEffect(() => {
+    if (running) {
+      breath.value = withRepeat(withTiming(1, { duration: 3200, easing: Easing.inOut(Easing.sin) }), -1, true);
+      spin.value = withRepeat(withTiming(360, { duration: 60000, easing: Easing.linear }), -1, false);
+    } else {
+      cancelAnimation(breath);
+      cancelAnimation(spin);
+      breath.value = withTiming(0, { duration: 600 });
+    }
+  }, [running, breath, spin]);
+  const halo = useAnimatedStyle(() => ({ opacity: 0.05 + breath.value * 0.12, transform: [{ scale: 0.86 + breath.value * 0.08 }] }));
+  const turn = useAnimatedStyle(() => ({ transform: [{ rotate: spin.value + "deg" }] }));
+  const c = size / 2, r = c - 22, circ = 2 * Math.PI * r;
+  const f = Math.min(1, Math.max(0, fraction));
+  const a = -Math.PI / 2 + f * 2 * Math.PI;
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={[
+          { position: "absolute", width: size, height: size, borderRadius: size, backgroundColor: color },
+          Platform.OS === "web" ? ({ filter: "blur(30px)" } as object) : null,
+          halo,
+        ]}
+      />
+      <Animated.View style={[StyleSheet.absoluteFill, turn]}>
+        <Svg width={size} height={size}>
+          <Circle cx={c} cy={c} r={c - 6} stroke="#ffffff1A" strokeWidth={1.5} strokeDasharray="1.5 9" fill="none" />
+        </Svg>
+      </Animated.View>
+      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+        <Circle cx={c} cy={c} r={r} stroke="#1A1A1F" strokeWidth={6} fill="#0E0E11" />
+        <Circle
+          cx={c}
+          cy={c}
+          r={r}
+          stroke={color}
+          strokeWidth={6}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={circ + " " + circ}
+          strokeDashoffset={circ * (1 - f)}
+          transform={"rotate(-90 " + c + " " + c + ")"}
+        />
+        {f > 0.003 && (
+          <>
+            <Circle cx={c + Math.cos(a) * r} cy={c + Math.sin(a) * r} r={12} fill={color} opacity={0.25} />
+            <Circle cx={c + Math.cos(a) * r} cy={c + Math.sin(a) * r} r={5} fill="#FFFFFF" />
+          </>
+        )}
+      </Svg>
+      {children}
     </View>
   );
 }
@@ -149,7 +212,7 @@ function FocusContent() {
   const color = rest ? "#7FD1A4" : C.green;
   const sessions = state.focus.filter((f) => f.date === today);
   const todayMin = sessions.reduce((n, f) => n + f.minutes, 0);
-  const digits = Math.min(112, (width - 40) * 0.3);
+  const dial = Math.min(320, width - 56);
   const currentMode = modes.find((m) => m.focus === (active?.minutes ?? minutes));
   return (
     <>
@@ -158,10 +221,26 @@ function FocusContent() {
           {rest ? "PAUSE" : active ? (running ? "FOKUS" : "PAUSIERT") : "BEREIT"}
           {currentMode && !rest ? " · " + currentMode.label.toUpperCase() + " " + currentMode.focus + "/" + currentMode.rest : ""}
         </Text>
-        <View style={{ alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: C.ink, fontSize: digits, lineHeight: digits * 1.05, fontWeight: "800", letterSpacing: -digits * 0.045, fontVariant: ["tabular-nums"], marginTop: 14 }}>
-            {String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}
-          </Text>
+        <View style={{ alignItems: "center", justifyContent: "center", marginTop: 18 }}>
+          <Dial fraction={active || rest ? fraction : 0} size={dial} running={running || !!rest} color={color}>
+            <Text style={{ color: C.ink, fontSize: dial * 0.24, lineHeight: dial * 0.27, fontWeight: "800", letterSpacing: -dial * 0.01, fontVariant: ["tabular-nums"] }}>
+              {String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}
+            </Text>
+            <Text numberOfLines={1} style={{ color: rest ? color : "#B8B6BE", fontSize: 15, fontWeight: "600", marginTop: 4, maxWidth: dial * 0.62, textAlign: "center" }}>
+              {rest ? "Kurz bewegen & trinken" : label}
+            </Text>
+            {!active && !rest && (
+              <View style={[s.row, { marginTop: 12 }]}>
+                <Pressable accessibilityLabel="5 Minuten weniger" onPress={() => setMinutes(Math.max(5, minutes - 5))} style={st.small}>
+                  <Minus size={16} color={C.ink} />
+                </Pressable>
+                <Text style={[s.muted, { width: 64, textAlign: "center" }]}>{minutes} Min.</Text>
+                <Pressable accessibilityLabel="5 Minuten mehr" onPress={() => setMinutes(Math.min(180, minutes + 5))} style={st.small}>
+                  <Plus size={16} color={C.ink} />
+                </Pressable>
+              </View>
+            )}
+          </Dial>
           <Burst trigger={burst} />
           {reward ? (
             <Animated.View entering={ZoomIn.springify()} exiting={FadeOut} style={{ position: "absolute", top: -8, backgroundColor: "#2A2418", paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 }}>
@@ -169,26 +248,7 @@ function FocusContent() {
             </Animated.View>
           ) : null}
         </View>
-        <Text numberOfLines={1} style={{ color: C.ink, fontSize: 18, fontWeight: "600", marginTop: 8 }}>
-          {rest ? "Kurz bewegen & trinken" : label}
-        </Text>
-        {!active && !rest && (
-          <View style={[s.row, { marginTop: 14 }]}>
-            <Pressable accessibilityLabel="5 Minuten weniger" onPress={() => setMinutes(Math.max(5, minutes - 5))} style={st.small}>
-              <Minus size={16} color={C.ink} />
-            </Pressable>
-            <Text style={[s.muted, { width: 64, textAlign: "center" }]}>{minutes} Min.</Text>
-            <Pressable accessibilityLabel="5 Minuten mehr" onPress={() => setMinutes(Math.min(180, minutes + 5))} style={st.small}>
-              <Plus size={16} color={C.ink} />
-            </Pressable>
-          </View>
-        )}
-        <View style={{ width: "100%", maxWidth: 320, marginTop: 30 }}>
-          <View style={{ height: 4, borderRadius: 2, backgroundColor: "#1E1E23", overflow: "hidden" }}>
-            <View style={{ width: (Math.min(1, Math.max(0, fraction)) * 100 + "%") as DimensionValue, height: 4, backgroundColor: color }} />
-          </View>
-        </View>
-        <View style={[s.row, { gap: 16, marginTop: 36 }]}>
+        <View style={[s.row, { gap: 16, marginTop: 28 }]}>
           {active || rest ? (
             <>
               {active && (
