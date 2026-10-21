@@ -8,6 +8,7 @@ import { defaultRemind, dueLabel, remindLabel, remindModes, sortTodos, todoState
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Button, C, Chip, Field, Sheet, Shell, s } from "./planner-ui";
+import { DateField, TimeField } from "./pickers";
 
 const stateStyle: Record<TodoState, { label: string; color: string }> = {
   overdue: { label: "Überfällig", color: "#FF6B78" },
@@ -140,12 +141,8 @@ function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string
         </View>
         {dueDay ? (
           <View style={s.row}>
-            <View style={{ flex: 1.4 }}>
-              <Field label="Datum (JJJJ-MM-TT)" value={dueDay} onChangeText={setDueDay} maxLength={10} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Field label="Uhrzeit" value={dueTime} onChangeText={setDueTime} maxLength={5} />
-            </View>
+            <DateField label="Datum" value={dueDay} onChange={setDueDay} />
+            <TimeField label="Uhrzeit" value={dueTime} onChange={setDueTime} />
           </View>
         ) : null}
       </View>
@@ -158,12 +155,8 @@ function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string
         </View>
         {remind.mode === "once" && (
           <View style={s.row}>
-            <View style={{ flex: 1.4 }}>
-              <Field label="Am (JJJJ-MM-TT)" value={onceDay} onChangeText={setOnceDay} maxLength={10} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Field label="Um" value={onceTime} onChangeText={setOnceTime} maxLength={5} />
-            </View>
+            <DateField label="Am" value={onceDay} onChange={setOnceDay} />
+            <TimeField label="Um" value={onceTime} onChange={setOnceTime} />
           </View>
         )}
         {(remind.mode === "daily" || remind.mode === "weekly") && (
@@ -175,7 +168,7 @@ function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string
                 ))}
               </View>
             )}
-            <Field label="Uhrzeit" value={remind.time} onChangeText={(time) => setRemind({ ...remind, time })} maxLength={5} />
+            <TimeField label="Uhrzeit" value={remind.time} onChange={(time) => setRemind({ ...remind, time })} />
           </>
         )}
         {remind.mode === "hourly" && (

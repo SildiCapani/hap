@@ -11,6 +11,7 @@ import { tap } from "@/lib/notify";
 import { Bar } from "./charts";
 import { Button, C, Field, Pill, Sheet, s, useToday } from "./planner-ui";
 import { ProfileSheet } from "./planner-meals";
+import { TimeField } from "./pickers";
 import { BarcodeSheet } from "./barcode";
 
 const macros = [
@@ -120,7 +121,7 @@ function FoodSheet({ draft, entry, close, saved }: { draft: Draft; entry?: FoodE
           <Field label="Gericht" value={name} onChangeText={setName} maxLength={80} />
         </View>
         <View style={{ flex: 1 }}>
-          <Field label="Uhrzeit" value={time} onChangeText={setTime} maxLength={5} />
+          <TimeField label="Uhrzeit" value={time} onChange={setTime} />
         </View>
       </View>
       {items.length > 0 && (

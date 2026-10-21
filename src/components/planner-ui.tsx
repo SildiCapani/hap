@@ -79,6 +79,7 @@ import {
 } from "@/lib/planner";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
+import { DateField, DurationField, TimeField } from "./pickers";
 
 export const C = {
   bg: "#0B0B0D",
@@ -1222,33 +1223,15 @@ function TaskEditor({
                 ))}
               </View>
             </View>
-            <Field
-              label="Datum / Serienbeginn (JJJJ-MM-TT)"
-              value={date}
-              onChangeText={setDate}
-              placeholder="2026-10-15"
-              maxLength={10}
-            />
             <View style={s.row}>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="Uhrzeit (HH:MM)"
-                  value={time}
-                  onChangeText={setTime}
-                  placeholder="09:00"
-                  maxLength={5}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="Dauer in Minuten"
-                  value={duration}
-                  onChangeText={setDuration}
-                  keyboardType="numeric"
-                  maxLength={4}
-                />
-              </View>
+              <DateField label={repeat === "none" ? "Datum" : "Serienbeginn"} value={date} onChange={setDate} />
+              <TimeField label="Uhrzeit" value={time} onChange={setTime} />
             </View>
+            <DurationField
+              label="Dauer"
+              value={Number(duration) || 30}
+              onChange={(v) => setDuration(String(v))}
+            />
             {state.transport.enabled && state.places.length > 0 && (
               <View>
                 <Text style={s.label}>Ort (für die Wegplanung)</Text>

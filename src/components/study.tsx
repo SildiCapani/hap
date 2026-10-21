@@ -42,6 +42,7 @@ import { usePlanner } from "@/lib/store";
 import { pickPhoto } from "@/lib/food";
 import { examKindFor, pickPdf, scanModules, type ModuleDraft } from "@/lib/modules";
 import { WeekPlanSheet } from "./week-plan";
+import { DateField, TimeField } from "./pickers";
 import { tap } from "@/lib/notify";
 import { Bar, Heatmap, TimePicture } from "./charts";
 import {
@@ -231,12 +232,8 @@ function ExamEditor({ exam, close }: { exam?: Exam; close: () => void }) {
         </View>
       )}
       <View style={s.row}>
-        <View style={{ flex: 1.3 }}>
-          <Field label={kind === "assignment" ? "Abgabe am (JJJJ-MM-TT)" : "Datum (JJJJ-MM-TT)"} value={date} onChangeText={setDate} maxLength={10} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="Uhrzeit (optional)" value={time} onChangeText={setTime} placeholder="09:00" maxLength={5} />
-        </View>
+        <DateField label={kind === "assignment" ? "Abgabe am" : "Datum"} value={date} onChange={setDate} />
+        <TimeField label="Uhrzeit (optional)" value={time} onChange={setTime} optional />
       </View>
       {examWeek && (
         <Pressable onPress={() => setDate(examWeek.date)}>
@@ -401,7 +398,7 @@ function ModuleImport({ close }: { close: () => void }) {
                       <Field label={"Lernstunden" + (r.ects ? " (" + r.ects + " ECTS)" : "")} value={r.hoursText} onChangeText={(v) => set({ hoursText: v })} keyboardType="numeric" maxLength={3} />
                     </View>
                     <View style={{ flex: 1.3 }}>
-                      <Field label={r.date ? "Prüfung am" : "Datum (vorläufig)"} value={r.dateText} onChangeText={(v) => set({ dateText: v })} maxLength={10} />
+                      <DateField label={r.date ? "Prüfung am" : "Datum (vorläufig)"} value={r.dateText} onChange={(v) => set({ dateText: v })} />
                     </View>
                   </View>
                 )}

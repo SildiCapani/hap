@@ -28,6 +28,7 @@ import {
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Sparkline } from "./charts";
+import { TimeField } from "./pickers";
 import { Button, C, Chip, Field, Heading, Pill, Sheet, Shell, s, useToday } from "./planner-ui";
 
 const sport = categories.sport;
@@ -365,7 +366,7 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
       </View>
       <View style={s.row}>
         <View style={{ flex: 1 }}>
-          <Field label="Uhrzeit" value={time} onChangeText={setTime} maxLength={5} />
+          <TimeField label="Uhrzeit" value={time} onChange={setTime} />
         </View>
         <View style={{ flex: 1 }}>
           <Field label="Dauer (Min.)" value={duration} onChangeText={setDuration} keyboardType="numeric" maxLength={3} />
