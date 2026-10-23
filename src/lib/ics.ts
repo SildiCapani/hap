@@ -235,3 +235,39 @@ export function normalizeCalendarUrl(value: string) {
     return "";
   }
 }
+
+export type RawEvent = {
+  uid: string;
+  title: string;
+  location: string;
+  note: string;
+  start: number;
+  allDay: boolean;
+  length: number;
+  rrule: string;
+  exdates: number[];
+};
+
+// Single events of a file with their repeat rule, for importing an .ics file
+// (e.g. a Teams invitation) into the plan. Cancelled events are left out.
+export function readEvents(text: string): RawEvent[] {
+  const out: RawEvent[] = [];
+  for (const b of readBlocks(text)) {
+    if (b.STATUS?.[0].value.toUpperCase() === "CANCELLED" || b["RECURRENCE-ID"]) continue;
+    const start = b.DTSTART && parseStamp(b.DTSTART[0].value, b.DTSTART[0].params);
+    if (!start) continue;
+    const end = b.DTEND && parseStamp(b.DTEND[0].value, b.DTEND[0].params);
+    out.push({
+      uid: b.UID?.[0].value || b.SUMMARY?.[0].value || String(start.ms),
+      title: unescape(b.SUMMARY?.[0].value || "Termin").slice(0, 120),
+      location: unescape(b.LOCATION?.[0].value || "").slice(0, 160),
+      note: unescape(b.DESCRIPTION?.[0].value || ""),
+      start: start.ms,
+      allDay: start.allDay,
+      length: end ? Math.max(0, end.ms - start.ms) : b.DURATION ? duration(b.DURATION[0].value) : start.allDay ? 86400000 : 30 * 60000,
+      rrule: b.RRULE?.[0].value || "",
+      exdates: (b.EXDATE || []).flatMap((x) => x.value.split(",").map((v) => parseStamp(v, x.params)?.ms ?? 0)).filter(Boolean),
+    });
+  }
+  return out;
+}

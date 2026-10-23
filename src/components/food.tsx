@@ -10,7 +10,7 @@ import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Bar } from "./charts";
 import { Button, C, Field, Pill, Sheet, s, useToday } from "./planner-ui";
-import { ProfileSheet } from "./planner-meals";
+import { ProfileSheet } from "./profile-sheet";
 import { TimeField } from "./pickers";
 import { BarcodeSheet } from "./barcode";
 

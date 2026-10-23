@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Keyboard,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -58,6 +59,7 @@ import {
   Trash2,
   Trophy,
   Utensils,
+  Video,
   X,
   type LucideIcon,
 } from "lucide-react-native";
@@ -80,6 +82,7 @@ import {
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { DateField, DurationField, TimeField } from "./pickers";
+import { meetingLink } from "@/lib/icsImport";
 
 export const C = {
   bg: "#0B0B0D",
@@ -1274,6 +1277,11 @@ function TaskEditor({
               multiline
               maxLength={2000}
             />
+            {meetingLink(note) ? (
+              <Button quiet icon={Video} onPress={() => void Linking.openURL(meetingLink(note))}>
+                Meeting öffnen
+              </Button>
+            ) : null}
             {error ? <Text style={s.formError}>{error}</Text> : null}
             {task && (
               <View style={{ gap: 10 }}>

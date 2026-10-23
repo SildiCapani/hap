@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { CalendarPlus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2 } from "lucide-react-native";
+import { CalendarPlus, Check, ChevronDown, ChevronRight, FileUp, RefreshCw, Trash2 } from "lucide-react-native";
+import { IcsImportSheet } from "./ics-import";
 import { dateKey, newId } from "@/lib/planner";
 import { normalizeCalendarUrl } from "@/lib/ics";
 import { usePlanner } from "@/lib/store";
@@ -34,6 +35,7 @@ export function CalendarSettings() {
   const [adding, setAdding] = useState(false);
   const [howto, setHowto] = useState(false);
   const [confirm, setConfirm] = useState("");
+  const [importing, setImporting] = useState(false);
   const today = dateKey();
   function add() {
     const link = normalizeCalendarUrl(url);
@@ -164,9 +166,14 @@ export function CalendarSettings() {
           </View>
         </View>
       ) : (
-        <Button quiet icon={CalendarPlus} onPress={() => setAdding(true)}>
-          Kalender abonnieren
-        </Button>
+        <View style={[s.row, { flexWrap: "wrap" }]}>
+          <Button quiet icon={CalendarPlus} onPress={() => setAdding(true)}>
+            Kalender abonnieren
+          </Button>
+          <Button quiet icon={FileUp} onPress={() => setImporting(true)}>
+            .ics-Datei importieren
+          </Button>
+        </View>
       )}
       <Pressable accessibilityRole="button" onPress={() => setHowto(!howto)} style={s.row}>
         {howto ? <ChevronDown size={15} color={C.green} /> : <ChevronRight size={15} color={C.green} />}
@@ -182,6 +189,7 @@ export function CalendarSettings() {
           ))}
         </View>
       )}
+      {importing && <IcsImportSheet close={() => setImporting(false)} />}
     </View>
   );
 }

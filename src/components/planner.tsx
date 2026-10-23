@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Dumbbell,
+  FileUp,
   Flame,
   Plus,
   Sparkles,
@@ -39,6 +40,7 @@ import { agenda } from "@/lib/agenda";
 import { hoursLabel, studyStreak } from "@/lib/study";
 import { trainingStreak, weekSummary } from "@/lib/training";
 import { DayTimeline } from "./day-timeline";
+import { IcsImportSheet } from "./ics-import";
 import { TimePicture, weekTime } from "./charts";
 import { Button, C, Heading, Shell, useEditor, useToday, s } from "./planner-ui";
 export { MealsScreen, SettingsScreen } from "./planner-meals";
@@ -48,6 +50,7 @@ function CalendarContent() {
   const today = useToday();
   const [day, setDay] = useState(today);
   const [month, setMonth] = useState(today.slice(0, 7));
+  const [importing, setImporting] = useState(false);
   const edit = useEditor();
   const { width } = useWindowDimensions();
   const first = month + "-01",
@@ -73,6 +76,9 @@ function CalendarContent() {
           <ChevronLeft size={18} color={C.ink} />
         </Pressable>
         <View style={[s.row, { gap: 8 }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel=".ics-Datei importieren" onPress={() => setImporting(true)} style={square}>
+            <FileUp size={17} color={C.ink} />
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={() => {
@@ -175,6 +181,7 @@ function CalendarContent() {
       <View style={{ marginTop: 16 }}>
         <DayTimeline day={day} />
       </View>
+      {importing && <IcsImportSheet close={() => setImporting(false)} />}
     </>
   );
 }
