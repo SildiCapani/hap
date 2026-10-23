@@ -56,7 +56,13 @@ export function reminders(state: PlannerState, now = Date.now(), horizon = 4): R
       const calLead = item.cal ? state.calendars.find((c) => c.id === item.cal?.calId)?.lead || 0 : 0;
       if (item.kind === "cal" && !calLead) continue;
       const lead =
-        item.kind === "cal" ? calLead : item.kind === "uni" ? 15 : item.kind === "training" ? 30 : n.lead;
+        item.kind === "cal"
+          ? calLead
+          : item.kind === "uni"
+            ? 15
+            : item.kind === "training"
+              ? 30
+              : (item.task?.lead ?? n.lead);
       if (
         (item.kind === "uni" && !n.lectures) ||
         (item.kind === "task" && !n.tasks) ||

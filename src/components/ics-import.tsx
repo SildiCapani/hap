@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { Check, FileUp, Video } from "lucide-react-native";
 import { parseDate, repeats } from "@/lib/planner";
-import { icsToItems, type ImportItem } from "@/lib/icsImport";
+import { applyImport, icsToItems, type ImportItem } from "@/lib/icsImport";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Button, C, Sheet, s } from "./planner-ui";
@@ -32,9 +32,15 @@ export function IcsImportSheet({ close }: { close: () => void }) {
     try {
       const text = await readIcsFile();
       if (!text) return;
-      const found = icsToItems(text);
+      const found = icsToItems(text, undefined, state.places);
       if (!found.length) return setError("In der Datei sind keine kommenden Termine.");
-      setItems(found.map((i) => ({ ...i, on: true, exists: state.tasks.some((t) => t.id === i.id) })));
+      setItems(
+        found.map((i) => {
+          const exists = state.tasks.some((t) => t.id === i.id || t.source === i.source);
+          // A cancellation only matters for a meeting that is in the plan.
+          return { ...i, exists, on: i.cancelled ? exists : true };
+        }),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Die Datei konnte nicht gelesen werden.");
     } finally {
@@ -44,10 +50,7 @@ export function IcsImportSheet({ close }: { close: () => void }) {
   const chosen = (items || []).filter((i) => i.on);
   function save() {
     tap("success");
-    update((prev) => {
-      const ids = new Set(chosen.map((i) => i.id));
-      return { ...prev, tasks: [...prev.tasks.filter((t) => !ids.has(t.id)), ...chosen.map((i) => i.task)] };
-    });
+    update((prev) => ({ ...prev, tasks: applyImport(prev.tasks, chosen) }));
     close();
   }
   return (
@@ -60,7 +63,7 @@ export function IcsImportSheet({ close }: { close: () => void }) {
           <>
             <Button quiet onPress={() => setItems(null)}>Andere Datei</Button>
             <Button icon={Check} disabled={!chosen.length} onPress={save}>
-              {chosen.length} {chosen.length === 1 ? "Termin" : "Termine"} übernehmen
+              {chosen.every((i) => i.cancelled) ? "Absage übernehmen" : chosen.length + (chosen.length === 1 ? " Termin" : " Termine") + " übernehmen"}
             </Button>
           </>
         ) : undefined
@@ -90,12 +93,28 @@ export function IcsImportSheet({ close }: { close: () => void }) {
                 {i.on && <Check size={14} color={C.onAccent} strokeWidth={3} />}
               </View>
               <View style={{ flex: 1, gap: 3 }}>
-                <Text style={s.h3}>{i.title}</Text>
+                <Text style={[s.h3, i.cancelled && { textDecorationLine: "line-through", color: C.muted }]}>{i.title}</Text>
                 <Text style={s.micro}>
                   {parseDate(i.date).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short" })} · {i.allDay ? "ganztägig" : i.time + " · " + i.duration + " Min."}
                   {i.repeat !== "none" ? " · " + repeats[i.repeat] : ""}
-                  {i.exists ? " · wird aktualisiert" : ""}
                 </Text>
+                {(i.organizer || i.attendees > 0 || i.alarm !== null || i.place) && !i.cancelled ? (
+                  <Text style={s.micro} numberOfLines={2}>
+                    {[
+                      i.organizer && "von " + i.organizer,
+                      i.attendees > 0 && i.attendees + " Teilnehmer",
+                      i.alarm !== null && "Erinnerung " + (i.alarm ? i.alarm + " Min. vorher" : "pünktlich"),
+                      i.place && "Ort: " + i.place + " (Weg wird geplant)",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                ) : null}
+                {i.cancelled || i.tentative || i.exists ? (
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: i.cancelled ? "#FF6B78" : "#E5B073" }}>
+                    {i.cancelled ? (i.exists ? "Abgesagt – wird aus dem Plan entfernt" : "Abgesagt – nicht im Plan") : i.exists ? "Schon im Plan – wird aktualisiert" : "Vorläufig zugesagt"}
+                  </Text>
+                ) : null}
               </View>
               {i.link ? <Video size={16} color={C.muted} /> : null}
             </Pressable>

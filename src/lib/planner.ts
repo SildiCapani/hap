@@ -31,6 +31,8 @@ export type Task = {
   repeat: Repeat;
   skipped: string[];
   placeId?: string;
+  lead?: number; // own reminder minutes (e.g. from an invitation), else the global setting
+  source?: string; // "ics:<uid>" for imported invitations
 };
 export type Meal = {
   date: string;

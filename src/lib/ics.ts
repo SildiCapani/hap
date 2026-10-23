@@ -98,7 +98,7 @@ function readBlocks(text: string) {
     else if (line === "END:VEVENT") {
       events.push(current);
       current = null;
-    } else if (!depth) {
+    } else {
       // NAME;PARAM=a;PARAM2="b:c":VALUE – the value starts after the first colon outside quotes.
       let quoted = false, split = -1;
       for (let i = 0; i < line.length; i++) {
@@ -115,7 +115,8 @@ function readBlocks(text: string) {
         const [k, v = ""] = p.split("=");
         params[k.toUpperCase()] = v.replace(/^"|"$/g, "");
       }
-      const key = name.toUpperCase();
+      // Properties of nested blocks (reminders: VALARM) are kept apart.
+      const key = (depth ? "ALARM-" : "") + name.toUpperCase();
       (current[key] ??= []).push({ value: line.slice(split + 1), params });
     }
   }
@@ -246,20 +247,35 @@ export type RawEvent = {
   length: number;
   rrule: string;
   exdates: number[];
+  cancelled: boolean;
+  tentative: boolean;
+  organizer: string;
+  attendees: string[];
+  alarm: number | null; // minutes before start
+  categories: string[];
+  link: string;
 };
 
+const person = (x: { value: string; params: Record<string, string> }) =>
+  (x.params.CN || x.value.replace(/^mailto:/i, "")).replace(/^"|"$/g, "").trim();
+
 // Single events of a file with their repeat rule, for importing an .ics file
-// (e.g. a Teams invitation) into the plan. Cancelled events are left out.
+// (e.g. a Teams invitation) into the plan. A cancellation file (METHOD:CANCEL)
+// marks its events as cancelled so they can be removed.
 export function readEvents(text: string): RawEvent[] {
+  const method = /^METHOD:(\w+)/im.exec(text)?.[1]?.toUpperCase() || "";
   const out: RawEvent[] = [];
   for (const b of readBlocks(text)) {
-    if (b.STATUS?.[0].value.toUpperCase() === "CANCELLED" || b["RECURRENCE-ID"]) continue;
+    if (b["RECURRENCE-ID"]) continue;
     const start = b.DTSTART && parseStamp(b.DTSTART[0].value, b.DTSTART[0].params);
     if (!start) continue;
     const end = b.DTEND && parseStamp(b.DTEND[0].value, b.DTEND[0].params);
+    const trigger = b["ALARM-TRIGGER"]?.find((t) => !t.params.VALUE && t.params.RELATED !== "END");
+    const before = trigger ? -duration(trigger.value) / 60000 : NaN;
+    const organizer = b.ORGANIZER ? person(b.ORGANIZER[0]) : "";
     out.push({
       uid: b.UID?.[0].value || b.SUMMARY?.[0].value || String(start.ms),
-      title: unescape(b.SUMMARY?.[0].value || "Termin").slice(0, 120),
+      title: unescape(b.SUMMARY?.[0].value || "Termin").replace(/^(Abgesagt|Canceled|Cancelled):\s*/i, "").slice(0, 120),
       location: unescape(b.LOCATION?.[0].value || "").slice(0, 160),
       note: unescape(b.DESCRIPTION?.[0].value || ""),
       start: start.ms,
@@ -267,6 +283,19 @@ export function readEvents(text: string): RawEvent[] {
       length: end ? Math.max(0, end.ms - start.ms) : b.DURATION ? duration(b.DURATION[0].value) : start.allDay ? 86400000 : 30 * 60000,
       rrule: b.RRULE?.[0].value || "",
       exdates: (b.EXDATE || []).flatMap((x) => x.value.split(",").map((v) => parseStamp(v, x.params)?.ms ?? 0)).filter(Boolean),
+      cancelled: method === "CANCEL" || b.STATUS?.[0].value.toUpperCase() === "CANCELLED",
+      tentative:
+        b.STATUS?.[0].value.toUpperCase() === "TENTATIVE" ||
+        b["X-MICROSOFT-CDO-BUSYSTATUS"]?.[0].value.toUpperCase() === "TENTATIVE",
+      organizer,
+      attendees: (b.ATTENDEE || [])
+        .filter((a) => (a.params.CUTYPE || "INDIVIDUAL").toUpperCase() === "INDIVIDUAL")
+        .map(person)
+        .filter((n) => n && n !== organizer)
+        .slice(0, 40),
+      alarm: Number.isFinite(before) && before >= 0 && before <= 7 * 1440 ? Math.round(before) : null,
+      categories: (b.CATEGORIES || []).flatMap((c) => unescape(c.value).split(",")).map((c) => c.trim()).filter(Boolean),
+      link: (b["X-MICROSOFT-SKYPETEAMSMEETINGURL"] || b["X-MICROSOFT-ONLINEMEETINGCONFLINK"] || b.URL || [])[0]?.value || "",
     });
   }
   return out;
