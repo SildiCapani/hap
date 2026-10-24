@@ -28,6 +28,7 @@ import {
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Sparkline } from "./charts";
+import { TrainingHistorySheet } from "./history";
 import { TimeField } from "./pickers";
 import { Button, C, Chip, Field, Heading, Pill, Sheet, Shell, s, useToday } from "./planner-ui";
 
@@ -414,10 +415,11 @@ function TrainingContent() {
     update((prev) => (w ? startWorkout(prev, w, day) : { ...prev, activeWorkout: null }));
   };
   const [editing, setEditing] = useState<Workout | "new" | null>(null);
+  const [history, setHistory] = useState(false);
   const names = [...new Set(state.workouts.flatMap((w) => w.exercises.map((e) => e.name)))];
   const [exercise, setExercise] = useState("");
   const chosen = exercise || names[0] || "";
-  const history = exerciseHistory(state, chosen);
+  const strength = exerciseHistory(state, chosen);
   const [weight, setWeight] = useState("");
   const week = weekSummary(state, today);
   const start = monday(today);
@@ -444,6 +446,14 @@ function TrainingContent() {
             </View>
             <Text style={[s.heroSmall, { color: "#F5D2A8" }]}>{state.workoutLogs.length} Trainings gesamt</Text>
           </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setHistory(true)}
+            style={({ pressed }) => [s.row, { alignSelf: "flex-start", marginTop: 16, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: "#4A3524", opacity: pressed ? 0.8 : 1 }]}
+          >
+            <TrendingUp size={16} color="#FFF1E2" />
+            <Text style={{ color: "#FFF1E2", fontWeight: "700", fontSize: 14 }}>Entwicklung & Verlauf</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -573,8 +583,8 @@ function TrainingContent() {
                 <TrendingUp size={17} color={sport.color} />
                 <Text style={s.h3}>Kraftverlauf (geschätztes 1RM)</Text>
               </View>
-              {history.length > 0 && (
-                <Text style={[s.h3, { color: sport.color }]}>{String(history[history.length - 1].best).replace(".", ",")} kg</Text>
+              {strength.length > 0 && (
+                <Text style={[s.h3, { color: sport.color }]}>{String(strength[strength.length - 1].best).replace(".", ",")} kg</Text>
               )}
             </View>
             <View style={s.wrap}>
@@ -582,7 +592,7 @@ function TrainingContent() {
                 <Chip key={n} label={n} active={n === chosen} color={sport.color} onPress={() => setExercise(n)} />
               ))}
             </View>
-            <Sparkline values={history.map((h) => h.best)} color={sport.color} />
+            <Sparkline values={strength.map((h) => h.best)} color={sport.color} />
           </View>
 
           <View style={[s.card, { padding: 22, gap: 14 }]}>
@@ -640,6 +650,7 @@ function TrainingContent() {
         </View>
       )}
       {editing && <WorkoutEditor workout={editing === "new" ? undefined : editing} close={() => setEditing(null)} />}
+      {history && <TrainingHistorySheet close={() => setHistory(false)} />}
     </>
   );
 }

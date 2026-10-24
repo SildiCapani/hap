@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
-import { Camera, Check, ImagePlus, PenLine, ScanBarcode, Sparkles, Trash2, User, X } from "lucide-react-native";
+import { Camera, Check, ImagePlus, PenLine, ScanBarcode, Sparkles, Trash2, TrendingUp, User, X } from "lucide-react-native";
 import { localStamp, newId, type FoodEntry } from "@/lib/planner";
 import { foodTotals, pickPhoto, scanFood, type FoodEstimate } from "@/lib/food";
 import { goals, nutrition, workoutsFor } from "@/lib/training";
@@ -13,6 +13,7 @@ import { Button, C, Field, Pill, Sheet, s, useToday } from "./planner-ui";
 import { ProfileSheet } from "./profile-sheet";
 import { TimeField } from "./pickers";
 import { BarcodeSheet } from "./barcode";
+import { FoodHistorySheet } from "./history";
 
 const macros = [
   { key: "protein", label: "Protein", color: "#E5B073" },
@@ -185,6 +186,7 @@ export function FoodTracker() {
   const [writing, setWriting] = useState(false);
   const [profile, setProfile] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [history, setHistory] = useState(false);
   const training = workoutsFor(state, today).length > 0;
   const target = nutrition(state.profile, training);
   const totals = foodTotals(state, today);
@@ -213,6 +215,10 @@ export function FoodTracker() {
       <View style={[s.card, { padding: 20, gap: 16 }]}>
         <View style={[s.row, { justifyContent: "space-between", flexWrap: "wrap" }]}>
           <Pill>{training ? "Trainingstag" : "Ruhetag"}</Pill>
+          <Pressable accessibilityRole="button" onPress={() => setHistory(true)} style={s.row}>
+            <TrendingUp size={14} color={C.green} />
+            <Text style={s.link}>Verlauf</Text>
+          </Pressable>
           <Pressable accessibilityRole="button" onPress={() => setProfile(true)} style={s.row}>
             <User size={14} color={C.green} />
             <Text style={s.link}>
@@ -361,6 +367,7 @@ export function FoodTracker() {
       )}
       {profile && <ProfileSheet close={() => setProfile(false)} />}
       {scanning && <BarcodeSheet close={() => setScanning(false)} />}
+      {history && <FoodHistorySheet close={() => setHistory(false)} />}
     </View>
   );
 }

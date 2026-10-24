@@ -140,7 +140,7 @@ export const goals = {
 export function nutrition(profile: Profile, trainingDay: boolean) {
   const bmr =
     10 * profile.weight + 6.25 * profile.height - 5 * profile.age + (profile.male ? 5 : -161);
-  const base = bmr * 1.45 + goals[profile.goal].kcal;
+  const base = bmr * 1.45 + goals[profile.goal].kcal + (profile.kcalOffset || 0);
   const kcal = Math.round((base + (trainingDay ? 250 : -100)) / 10) * 10;
   const protein = Math.round(profile.weight * (profile.goal === "cut" ? 2.2 : 2));
   const fat = Math.round((kcal * 0.27) / 9);

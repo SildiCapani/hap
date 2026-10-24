@@ -168,6 +168,7 @@ export type Profile = {
   weight: number;
   goal: Goal;
   diet: string;
+  kcalOffset?: number; // correction from the measured energy need (Verlauf)
 };
 export type NotifySettings = {
   enabled: boolean;
@@ -535,6 +536,7 @@ export function readState(raw: string): PlannerState {
   for (const key of Object.keys(defaults) as (keyof typeof defaults)[])
     (value as Record<string, unknown>)[key] ??= defaults[key];
   value.profile = { ...defaultProfile, ...value.profile };
+  if (typeof value.profile.kcalOffset !== "number" || !Number.isFinite(value.profile.kcalOffset)) delete value.profile.kcalOffset;
   value.notify = { ...defaultNotify, ...value.notify };
   value.transport = { ...defaultTransport, ...(value.transport as Partial<TransportSettings>) };
   if (

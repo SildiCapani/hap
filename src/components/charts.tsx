@@ -184,3 +184,36 @@ export function Bar({ value, color = C.green, height = 8 }: { value: number; col
     </View>
   );
 }
+
+// Bars per day/week, optionally with a target mark per bar (e.g. kcal goal).
+export function BarChart({
+  data,
+  labels,
+  height = 120,
+  color = C.green,
+}: {
+  data: { value: number; target?: number; dim?: boolean; label: string }[];
+  labels: string[];
+  height?: number;
+  color?: string;
+}) {
+  const max = Math.max(1, ...data.map((d) => Math.max(d.value, d.target || 0))) * 1.08;
+  const pct = (v: number) => ((v / max) * 100 + "%") as DimensionValue;
+  return (
+    <View>
+      <View style={{ height, flexDirection: "row", alignItems: "flex-end", gap: data.length > 40 ? 1 : 3 }}>
+        {data.map((d, i) => (
+          <View key={i} accessibilityLabel={d.label} style={{ flex: 1, height: "100%", justifyContent: "flex-end" }}>
+            {d.target ? <View style={{ position: "absolute", left: 0, right: 0, bottom: pct(d.target), height: 2, borderRadius: 1, backgroundColor: "#F4F3F166" }} /> : null}
+            <View style={{ height: d.value ? pct(d.value) : 3, minHeight: 2, borderRadius: 3, backgroundColor: d.value ? color : "#2A2B32", opacity: d.dim ? 0.4 : 1 }} />
+          </View>
+        ))}
+      </View>
+      <View style={[s.row, { justifyContent: "space-between", marginTop: 6 }]}>
+        {labels.map((l, i) => (
+          <Text key={i} style={{ fontSize: 10, color: C.muted }}>{l}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
