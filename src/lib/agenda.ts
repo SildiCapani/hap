@@ -11,7 +11,7 @@ import { minutes, type UniEvent } from "./rapla.ts";
 import type { CalEvent } from "./ics.ts";
 import { modeLabel, placeName, travelPlan, type Leg } from "./transport.ts";
 import { clock, examKinds, focusPick, hoursLabel, upcomingExams } from "./study.ts";
-import { loggedOn, workoutsFor } from "./training.ts";
+import { loggedOn, moveOf, workoutsFor } from "./training.ts";
 
 export type AgendaItem = {
   key: string;
@@ -97,7 +97,7 @@ export function agenda(state: PlannerState, day: string) {
       end: Math.min(24 * 60, start + w.duration),
       color: categories.sport.color,
       pale: categories.sport.pale,
-      sub: w.exercises.length + " Übungen",
+      sub: w.exercises.length + " Übungen" + (moveOf(state, w.id, day) ? " · verschoben" : ""),
       done: !!loggedOn(state, w.id, day),
       workout: w,
     });

@@ -110,9 +110,36 @@ export function fromLibrary(name: string): Exercise {
 
 export const timed = (name: string) => /\(sek\.?\)|sekunden/i.test(name);
 
-export function workoutsFor(state: PlannerState, day: string) {
+export function workoutsFor(state: PlannerState, day: string): Workout[] {
   const weekday = parseDate(day).getDay();
-  return state.workouts.filter((w) => w.weekdays.includes(weekday));
+  const moves = state.workoutMoves ?? [];
+  const regular = state.workouts.filter((w) => w.weekdays.includes(weekday) && !moves.some((m) => m.workoutId === w.id && m.from === day));
+  const moved = moves.flatMap((m) => {
+    const w = m.to === day ? state.workouts.find((x) => x.id === m.workoutId) : undefined;
+    return w && !regular.some((r) => r.id === w.id) ? [{ ...w, time: m.time }] : [];
+  });
+  return [...regular, ...moved].sort((a, b) => a.time.localeCompare(b.time));
+}
+
+// The move that put this workout on this day, if it was moved.
+export function moveOf(state: PlannerState, workoutId: string, day: string) {
+  return (state.workoutMoves ?? []).find((m) => m.workoutId === workoutId && m.to === day);
+}
+
+// Can the workout shown on `day` go to `to`? Not onto a day where it already takes place.
+export function canMoveWorkout(state: PlannerState, workoutId: string, day: string, to: string) {
+  return to === day || !workoutsFor(state, to).some((w) => w.id === workoutId);
+}
+
+// Move the workout shown on `day` to another date/time for this one time only.
+// Moving it back to its original slot removes the exception again.
+export function moveWorkout(state: PlannerState, workoutId: string, day: string, to: string, time: string): PlannerState {
+  const workout = state.workouts.find((w) => w.id === workoutId);
+  if (!workout || !canMoveWorkout(state, workoutId, day, to)) return state;
+  const from = moveOf(state, workoutId, day)?.from ?? day;
+  const rest = (state.workoutMoves ?? []).filter((m) => !(m.workoutId === workoutId && m.from === from));
+  const back = to === from && time === workout.time;
+  return { ...state, workoutMoves: back ? rest : [...rest, { id: workoutId + ":" + from, workoutId, from, to, time }] };
 }
 
 export function loggedOn(state: PlannerState, workoutId: string, day: string) {

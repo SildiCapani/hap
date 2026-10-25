@@ -20,6 +20,7 @@ import { newId, occurrenceKey, parseDate, type Task } from "@/lib/planner";
 import { agenda, layout, type AgendaItem } from "@/lib/agenda";
 import { modeLabel, placeName } from "@/lib/transport";
 import { clock } from "@/lib/study";
+import { moveWorkout } from "@/lib/training";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import type { UniEvent } from "@/lib/rapla";
@@ -202,6 +203,13 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
   }
   function drop(item: AgendaItem, steps: number) {
     setDrag(null);
+    const workout = item.workout;
+    if (item.kind === "training" && workout && steps) {
+      // Only this day: the weekly plan stays as it is.
+      tap("success");
+      update((prev) => moveWorkout(prev, workout.id, day, day, clock(item.start + steps)));
+      return;
+    }
     if (!item.task || !steps) return;
     const time = clock(item.start + steps);
     if (item.task.repeat === "none") moveTask(item.task, time, false);
@@ -288,7 +296,7 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
             const height = Math.max(26, top(Math.max(item.end, start + 26)) - top(start) - 2);
             const compact = height < 46;
             const past = day < today || (day === today && item.end <= nowMin);
-            const movable = item.kind === "task";
+            const movable = item.kind === "task" || (item.kind === "training" && !item.done);
             const preview = drag?.key === item.key ? drag.start : null;
             return (
               <Draggable

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View, type DimensionValue } from "react-native";
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming, Easing } from "react-native-reanimated";
-import { Check, ChevronDown, ChevronUp, Dumbbell, Flame, Minus, Pencil, Play, Plus, Scale, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
+import { CalendarClock, Check, ChevronDown, ChevronUp, Dumbbell, Flame, Minus, Pencil, Play, Plus, Scale, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
 import {
   categories,
   newId,
@@ -14,6 +14,7 @@ import {
   type Workout,
 } from "@/lib/planner";
 import {
+  canMoveWorkout,
   coreBlock,
   exerciseHistory,
   fromLibrary,
@@ -21,6 +22,8 @@ import {
   timed,
   lastEntry,
   loggedOn,
+  moveOf,
+  moveWorkout,
   presets,
   suggestion,
   trainingStreak,
@@ -33,7 +36,7 @@ import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Sparkline } from "./charts";
 import { TrainingHistorySheet } from "./history";
-import { DurationField, TimeField } from "./pickers";
+import { DateField, DurationField, TimeField } from "./pickers";
 import { Button, C, Chip, Field, Heading, Pill, Sheet, Shell, s, useToday } from "./planner-ui";
 
 const sport = categories.sport;
@@ -470,6 +473,62 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
   );
 }
 
+// Move one workout for a single day; the weekly plan stays the same.
+function MoveSheet({ workout, day, close }: { workout: Workout; day: string; close: () => void }) {
+  const { state, update } = usePlanner();
+  const move = moveOf(state, workout.id, day);
+  const plan = state.workouts.find((w) => w.id === workout.id);
+  const [to, setTo] = useState(day);
+  const [time, setTime] = useState(workout.time);
+  const today = useToday();
+  // A few days around the workout, never in the past.
+  const first = shiftDay(day, -3) > today ? shiftDay(day, -3) : today;
+  const choices = Array.from({ length: 8 }, (_, i) => shiftDay(first, i));
+  const ok = canMoveWorkout(state, workout.id, day, to);
+  const label = (d: string) => parseDate(d).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" });
+  const save = (date: string, at: string) => {
+    tap("success");
+    update((prev) => moveWorkout(prev, workout.id, day, date, at));
+    close();
+  };
+  return (
+    <Sheet
+      title={workout.name + " verschieben"}
+      subtitle="Nur dieses eine Mal – dein Wochenplan bleibt, wie er ist."
+      close={close}
+      footer={
+        <>
+          {move && plan ? (
+            <Button quiet onPress={() => save(move.from, plan.time)}>Zurück auf {label(move.from)}, {plan.time}</Button>
+          ) : null}
+          <Button icon={Check} disabled={!ok || (to === day && time === workout.time)} onPress={() => save(to, time)}>
+            Verschieben
+          </Button>
+        </>
+      }
+    >
+      <View>
+        <Text style={s.label}>Tag</Text>
+        <View style={s.wrap}>
+          {[...choices, ...(choices.includes(to) ? [] : [to])].map((d) => (
+            <Chip key={d} label={label(d)} active={to === d} color={sport.color} onPress={() => setTo(d)} />
+          ))}
+        </View>
+      </View>
+      <View style={s.row}>
+        <View style={{ flex: 1 }}>
+          <DateField label="Anderes Datum" value={to} onChange={setTo} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <TimeField label="Uhrzeit" value={time} onChange={setTime} />
+        </View>
+      </View>
+      {!ok ? <Text style={s.formError}>An diesem Tag ist {workout.name} schon geplant.</Text> : null}
+      {move ? <Text style={s.micro}>Ursprünglich geplant: {label(move.from)}, {plan?.time} Uhr.</Text> : null}
+    </Sheet>
+  );
+}
+
 function TrainingContent() {
   const { state, update } = usePlanner();
   const today = useToday();
@@ -484,6 +543,7 @@ function TrainingContent() {
   };
   const [editing, setEditing] = useState<Workout | "new" | null>(null);
   const [history, setHistory] = useState(false);
+  const [moving, setMoving] = useState<Workout | null>(null);
   const names = [...new Set(state.workouts.flatMap((w) => w.exercises.map((e) => e.name)))];
   const [exercise, setExercise] = useState("");
   const chosen = exercise || names[0] || "";
@@ -588,6 +648,12 @@ function TrainingContent() {
                           <Text style={[s.micro, { marginTop: 4 }]}>
                             {w.time} Uhr · {w.duration} Min. · {w.exercises.length} Übungen
                           </Text>
+                          {moveOf(state, w.id, day) ? (
+                            <Text style={{ color: sport.color, fontSize: 12, marginTop: 3 }}>
+                              Verschoben – sonst {parseDate(moveOf(state, w.id, day)?.from || day).toLocaleDateString("de-DE", { weekday: "long" })}{" "}
+                              {state.workouts.find((x) => x.id === w.id)?.time} Uhr
+                            </Text>
+                          ) : null}
                         </View>
                         <Pressable accessibilityLabel="Training bearbeiten" onPress={() => setEditing(w)} style={s.arrow}>
                           <Pencil size={16} color={C.muted} />
@@ -610,7 +676,10 @@ function TrainingContent() {
                           ✓ Erledigt · {log.minutes} Min. · {Math.round(volume(log))} kg Volumen
                         </Pill>
                       ) : (
-                        <Button icon={Play} onPress={() => setSession(w)}>Training starten</Button>
+                        <View style={[s.row, { flexWrap: "wrap" }]}>
+                          <Button icon={Play} onPress={() => setSession(w)}>Training starten</Button>
+                          <Button quiet icon={CalendarClock} onPress={() => setMoving(w)}>Verschieben</Button>
+                        </View>
                       )}
                     </View>
                   );
@@ -719,6 +788,7 @@ function TrainingContent() {
       )}
       {editing && <WorkoutEditor workout={editing === "new" ? undefined : editing} close={() => setEditing(null)} />}
       {history && <TrainingHistorySheet close={() => setHistory(false)} />}
+      {moving && <MoveSheet workout={moving} day={day} close={() => setMoving(null)} />}
     </>
   );
 }

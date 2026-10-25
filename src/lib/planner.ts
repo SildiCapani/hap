@@ -100,6 +100,8 @@ export type WorkoutLog = {
     sets: { reps: number; weight: number }[];
   }[];
 };
+// One workout moved for a single day (another time and/or another date).
+export type WorkoutMove = { id: string; workoutId: string; from: string; to: string; time: string };
 export type SetDraft = { reps: string; weight: string; done: boolean };
 export type ActiveWorkout = {
   workoutId: string;
@@ -200,6 +202,7 @@ export type PlannerState = {
   activeFocus: ActiveFocus | null;
   workouts: Workout[];
   workoutLogs: WorkoutLog[];
+  workoutMoves: WorkoutMove[];
   activeWorkout: ActiveWorkout | null;
   bodyWeight: { date: string; kg: number }[];
   protein: Record<string, number>;
@@ -258,6 +261,7 @@ const extras = (): Omit<
   workouts: [],
   workoutLogs: [],
   activeWorkout: null,
+  workoutMoves: [],
   bodyWeight: [],
   protein: {},
   profile: { ...defaultProfile },

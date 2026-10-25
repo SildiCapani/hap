@@ -146,3 +146,31 @@ test("exercise library, core block and timed exercises", async () => {
   const next = suggestion(state, plank, "2026-10-23");
   assert.deepEqual([next.reps, next.note], [50, "Alle Sätze geschafft: +5 Sek."]);
 });
+
+test("a workout can be moved for one day only and moved back", async () => {
+  const { moveWorkout, moveOf, workoutsFor, weekSummary } = await import("../src/lib/training.ts");
+  const { agenda } = await import("../src/lib/agenda.ts");
+  const legs = { id: "legs", name: "Legs", weekdays: [3], time: "17:00", duration: 60, exercises: [] };
+  const push = { id: "push", name: "Push", weekdays: [4], time: "18:00", duration: 60, exercises: [] };
+  let state = { ...createState(), workouts: [legs, push] };
+  const wed = "2026-10-28", thu = "2026-10-29", nextWed = "2026-11-04";
+  // Only the time on Wednesday.
+  state = moveWorkout(state, "legs", wed, wed, "19:30");
+  assert.deepEqual(workoutsFor(state, wed).map((w) => w.time), ["19:30"]);
+  assert.equal(workoutsFor(state, nextWed)[0].time, "17:00", "next week is unchanged");
+  assert.equal(state.workouts[0].time, "17:00", "the plan itself is unchanged");
+  assert.match(agenda(state, wed).timed.find((i) => i.kind === "training").sub, /verschoben/);
+  // Then to Thursday morning – still one exception for that Wednesday.
+  state = moveWorkout(state, "legs", wed, thu, "08:00");
+  assert.equal(state.workoutMoves.length, 1);
+  assert.deepEqual(workoutsFor(state, wed), []);
+  assert.deepEqual(workoutsFor(state, thu).map((w) => w.name + " " + w.time), ["Legs 08:00", "Push 18:00"]);
+  assert.equal(moveOf(state, "legs", thu).from, wed);
+  assert.equal(weekSummary(state, wed).planned, 2, "still two workouts that week");
+  // Push cannot go to Thursday twice; Legs cannot go onto next Wednesday's regular slot.
+  assert.equal(moveWorkout(state, "legs", thu, nextWed, "17:00"), state);
+  // Back to the original slot removes the exception.
+  state = moveWorkout(state, "legs", thu, wed, "17:00");
+  assert.deepEqual(state.workoutMoves, []);
+  assert.equal(workoutsFor(state, wed)[0].time, "17:00");
+});
