@@ -51,6 +51,65 @@ export const presets: { id: string; label: string; detail: string; build: () => 
 
 export const weekdayShort = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
+// Exercises to pick from when changing a workout. Timed ones count seconds
+// instead of repetitions ("(Sek.)" in the name).
+export const library: { group: string; items: Omit<Exercise, "id">[] }[] = [
+  { group: "Bauch", items: [
+    { name: "Crunches", sets: 3, reps: 15, weight: 0 },
+    { name: "Beinheben hängend", sets: 3, reps: 12, weight: 0 },
+    { name: "Planks (Sek.)", sets: 3, reps: 45, weight: 0 },
+    { name: "Kabel-Crunches", sets: 3, reps: 12, weight: 25 },
+    { name: "Russian Twists", sets: 3, reps: 20, weight: 5 },
+    { name: "Ab-Wheel", sets: 3, reps: 10, weight: 0 },
+    { name: "Seitstütz (Sek.)", sets: 2, reps: 30, weight: 0 },
+  ] },
+  { group: "Beine", items: [
+    { name: "Kniebeugen", sets: 4, reps: 6, weight: 70 },
+    { name: "Beinpresse", sets: 3, reps: 12, weight: 120 },
+    { name: "Rumänisches Kreuzheben", sets: 3, reps: 8, weight: 60 },
+    { name: "Ausfallschritte", sets: 3, reps: 10, weight: 16 },
+    { name: "Beinstrecker", sets: 3, reps: 12, weight: 40 },
+    { name: "Beinbeuger", sets: 3, reps: 12, weight: 35 },
+    { name: "Wadenheben", sets: 4, reps: 15, weight: 40 },
+  ] },
+  { group: "Brust", items: [
+    { name: "Bankdrücken", sets: 4, reps: 8, weight: 60 },
+    { name: "Schrägbank Kurzhantel", sets: 3, reps: 10, weight: 22 },
+    { name: "Butterfly", sets: 3, reps: 12, weight: 40 },
+    { name: "Dips", sets: 3, reps: 10, weight: 0 },
+    { name: "Liegestütze", sets: 3, reps: 15, weight: 0 },
+  ] },
+  { group: "Rücken", items: [
+    { name: "Klimmzüge", sets: 4, reps: 8, weight: 0 },
+    { name: "Latziehen", sets: 3, reps: 10, weight: 50 },
+    { name: "Langhantelrudern", sets: 4, reps: 8, weight: 50 },
+    { name: "Kabelrudern", sets: 3, reps: 12, weight: 45 },
+    { name: "Kreuzheben", sets: 3, reps: 5, weight: 90 },
+  ] },
+  { group: "Schultern", items: [
+    { name: "Schulterdrücken", sets: 3, reps: 10, weight: 30 },
+    { name: "Seitheben", sets: 3, reps: 15, weight: 8 },
+    { name: "Face Pulls", sets: 3, reps: 15, weight: 15 },
+    { name: "Reverse Butterfly", sets: 3, reps: 15, weight: 25 },
+  ] },
+  { group: "Arme", items: [
+    { name: "Bizepscurls", sets: 3, reps: 12, weight: 12 },
+    { name: "Hammercurls", sets: 3, reps: 12, weight: 12 },
+    { name: "Trizeps am Kabel", sets: 3, reps: 12, weight: 20 },
+    { name: "French Press", sets: 3, reps: 10, weight: 20 },
+  ] },
+];
+
+// Three core exercises to add to any workout in one go.
+export const coreBlock = ["Beinheben hängend", "Kabel-Crunches", "Planks (Sek.)"];
+
+export function fromLibrary(name: string): Exercise {
+  const item = library.flatMap((g) => g.items).find((i) => i.name === name);
+  return { id: newId("ex"), ...(item || { name, sets: 3, reps: 10, weight: 0 }) };
+}
+
+export const timed = (name: string) => /\(sek\.?\)|sekunden/i.test(name);
+
 export function workoutsFor(state: PlannerState, day: string) {
   const weekday = parseDate(day).getDay();
   return state.workouts.filter((w) => w.weekdays.includes(weekday));
@@ -79,6 +138,10 @@ export function suggestion(state: PlannerState, exercise: Exercise, day: string)
   if (!last) return { weight: exercise.weight, reps: exercise.reps, note: "Erstes Mal: sauber starten" };
   const top = Math.max(...last.sets.map((s) => s.weight));
   const hit = last.sets.length >= exercise.sets && last.sets.every((s) => s.reps >= exercise.reps);
+  if (top === 0 && timed(exercise.name))
+    return hit
+      ? { weight: 0, reps: exercise.reps + 5, note: "Alle Sätze geschafft: +5 Sek." }
+      : { weight: 0, reps: exercise.reps, note: "Gleiche Zeit wie letztes Mal" };
   if (top === 0)
     return hit
       ? { weight: 0, reps: exercise.reps + 1, note: "Alle Sätze geschafft: +1 Wdh." }

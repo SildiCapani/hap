@@ -130,3 +130,19 @@ test("old backups gain the new fields and XP levels grow", () => {
   const broken = { ...loaded, exams: [{ id: 1 }] };
   assert.throws(() => readState(JSON.stringify(broken)));
 });
+
+test("exercise library, core block and timed exercises", async () => {
+  const { coreBlock, fromLibrary, library, suggestion, timed } = await import("../src/lib/training.ts");
+  assert.ok(library.find((g) => g.group === "Bauch").items.length >= 5);
+  for (const name of coreBlock) assert.ok(library.some((g) => g.items.some((i) => i.name === name)), name + " is in the library");
+  const plank = fromLibrary("Planks (Sek.)");
+  assert.equal(plank.reps, 45);
+  assert.ok(plank.id.startsWith("ex"));
+  assert.equal(fromLibrary("Meine Übung").name, "Meine Übung");
+  assert.equal(timed("Planks (Sek.)"), true);
+  assert.equal(timed("Kabel-Crunches"), false);
+  const state = createState();
+  state.workoutLogs = [{ id: "l", workoutId: "w", name: "Legs & Bauch", date: "2026-10-20", minutes: 50, entries: [{ exerciseId: plank.id, name: plank.name, sets: [{ reps: 45, weight: 0 }, { reps: 45, weight: 0 }, { reps: 50, weight: 0 }] }] }];
+  const next = suggestion(state, plank, "2026-10-23");
+  assert.deepEqual([next.reps, next.note], [50, "Alle Sätze geschafft: +5 Sek."]);
+});

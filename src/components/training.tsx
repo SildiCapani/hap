@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, useWindowDimensions, View, type DimensionValue } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View, type DimensionValue } from "react-native";
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming, Easing } from "react-native-reanimated";
-import { Check, Dumbbell, Flame, Minus, Pencil, Play, Plus, Scale, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
+import { Check, ChevronDown, ChevronUp, Dumbbell, Flame, Minus, Pencil, Play, Plus, Scale, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
 import {
   categories,
   newId,
@@ -14,7 +14,11 @@ import {
   type Workout,
 } from "@/lib/planner";
 import {
+  coreBlock,
   exerciseHistory,
+  fromLibrary,
+  library,
+  timed,
   lastEntry,
   loggedOn,
   presets,
@@ -29,7 +33,7 @@ import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Sparkline } from "./charts";
 import { TrainingHistorySheet } from "./history";
-import { TimeField } from "./pickers";
+import { DurationField, TimeField } from "./pickers";
 import { Button, C, Chip, Field, Heading, Pill, Sheet, Shell, s, useToday } from "./planner-ui";
 
 const sport = categories.sport;
@@ -224,14 +228,14 @@ function Session({ workout, day }: { workout: Workout; day: string }) {
               <Text style={{ color: sport.color, fontSize: 12 }}>
                 {sug.note}
                 {last
-                  ? " · zuletzt " + last.sets.map((x) => x.reps + "×" + String(x.weight).replace(".", ",")).join(", ")
+                  ? " · zuletzt " + last.sets.map((x) => (x.weight ? x.reps + "×" + String(x.weight).replace(".", ",") : x.reps + (timed(e.name) ? " s" : ""))).join(", ")
                   : ""}
               </Text>
             </View>
             <View style={[s.row, { gap: 6, marginTop: 2 }]}>
               <Text style={[s.micro, { width: 16 }]}>#</Text>
               <Text style={[s.micro, { width: 114, textAlign: "center" }]}>Gewicht (kg)</Text>
-              <Text style={[s.micro, { width: 94, textAlign: "center" }]}>Wdh.</Text>
+              <Text style={[s.micro, { width: 94, textAlign: "center" }]}>{timed(e.name) ? "Sek." : "Wdh."}</Text>
             </View>
             {(sets[e.id] || []).map((x, i) => (
               <View key={i} style={[s.row, { gap: 6, opacity: x.done ? 0.65 : 1 }]}>
@@ -247,7 +251,7 @@ function Session({ workout, day }: { workout: Workout; day: string }) {
                 <Stepper
                   label={e.name + " Satz " + (i + 1) + " Wiederholungen"}
                   value={x.reps}
-                  step={1}
+                  step={timed(e.name) ? 5 : 1}
                   width={30}
                   onChange={(v) => change(e.id, i, { reps: v })}
                 />
@@ -295,11 +299,29 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
   const [name, setName] = useState(workout?.name || "");
   const [days, setDays] = useState<number[]>(workout?.weekdays || [1]);
   const [time, setTime] = useState(workout?.time || "18:00");
-  const [duration, setDuration] = useState(String(workout?.duration || 60));
+  const [duration, setDuration] = useState(workout?.duration || 60);
   const [exercises, setExercises] = useState<(Exercise & { raw?: Record<string, string> })[]>(
     workout?.exercises || [{ id: newId("ex"), name: "", sets: 3, reps: 10, weight: 0 }],
   );
   const [error, setError] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [group, setGroup] = useState(library[0].group);
+  const add = (names: string[]) => {
+    tap("select");
+    setExercises((prev) => [...prev.filter((e) => e.name.trim()), ...names.filter((n) => !prev.some((e) => e.name === n)).map(fromLibrary)]);
+  };
+  const addCore = () => {
+    add(coreBlock);
+    if (!/bauch|core|abs/i.test(name)) setName((n) => (n.trim() ? n.trim() + " & Bauch" : "Bauch").slice(0, 40));
+  };
+  const move = (i: number, by: number) => {
+    tap("select");
+    setExercises((prev) => {
+      const next = [...prev];
+      [next[i], next[i + by]] = [next[i + by], next[i]];
+      return next;
+    });
+  };
   function save() {
     if (!name.trim()) return setError("Gib dem Training einen Namen.");
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return setError("Uhrzeit als HH:MM.");
@@ -310,7 +332,7 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
       name: name.trim(),
       weekdays: [...days].sort(),
       time,
-      duration: Math.min(300, Math.max(10, Number(duration) || 60)),
+      duration: Math.min(300, Math.max(10, duration)),
       exercises: list.map(({ raw: _raw, ...e }) => ({ ...e, name: e.name.trim() })),
     };
     tap("success");
@@ -323,7 +345,11 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
   const setField = (id: string, key: "name" | "sets" | "reps" | "weight", value: string) =>
     setExercises((prev) =>
       prev.map((e) =>
-        e.id !== id ? e : key === "name" ? { ...e, name: value } : { ...e, [key]: Number(value.replace(",", ".")) || 0 },
+        e.id !== id
+          ? e
+          : key === "name"
+            ? { ...e, name: value }
+            : { ...e, [key]: Number(value.replace(",", ".")) || 0, raw: { ...e.raw, [key]: value } },
       ),
     );
   return (
@@ -369,33 +395,75 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
         <View style={{ flex: 1 }}>
           <TimeField label="Uhrzeit" value={time} onChange={setTime} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Field label="Dauer (Min.)" value={duration} onChangeText={setDuration} keyboardType="numeric" maxLength={3} />
-        </View>
+        <View style={{ flex: 1 }} />
       </View>
+      <DurationField label="Dauer" value={duration} onChange={setDuration} />
       <View style={{ gap: 10 }}>
-        <Text style={s.label}>Übungen (Sätze × Wdh. @ kg)</Text>
-        {exercises.map((e) => (
-          <View key={e.id} style={[s.row, { gap: 6 }]}>
-            <TextInput value={e.name} onChangeText={(v) => setField(e.id, "name", v)} placeholder="Übung" placeholderTextColor="#777" accessibilityLabel="Übung" style={[s.input, { flex: 3, minHeight: 40, padding: 9 }]} />
-            {(["sets", "reps", "weight"] as const).map((k) => (
-              <TextInput
-                key={k}
-                defaultValue={String(e[k])}
-                onChangeText={(v) => setField(e.id, k, v)}
-                keyboardType="decimal-pad"
-                accessibilityLabel={k === "sets" ? "Sätze" : k === "reps" ? "Wiederholungen" : "Gewicht"}
-                style={[s.input, { flex: 1, minHeight: 40, padding: 9, textAlign: "center" }]}
-              />
-            ))}
-            <Pressable accessibilityLabel="Übung entfernen" onPress={() => setExercises(exercises.filter((x) => x.id !== e.id))} style={s.arrow}>
-              <X size={16} color={C.muted} />
-            </Pressable>
+        <Text style={s.label}>Übungen</Text>
+        {exercises.map((e, i) => (
+          <View key={e.id} style={{ gap: 10, padding: 12, borderRadius: 14, backgroundColor: "#17171B" }}>
+            <View style={[s.row, { gap: 2 }]}>
+              <TextInput value={e.name} onChangeText={(v) => setField(e.id, "name", v)} placeholder="Übung" placeholderTextColor="#777" accessibilityLabel="Übung" style={[s.input, { flex: 1, minWidth: 0, minHeight: 40, padding: 9 }]} />
+              <Pressable accessibilityLabel={e.name + " nach oben"} disabled={i === 0} onPress={() => move(i, -1)} style={[st.icon, i === 0 && { opacity: 0.3 }]}>
+                <ChevronUp size={18} color={C.muted} />
+              </Pressable>
+              <Pressable accessibilityLabel={e.name + " nach unten"} disabled={i === exercises.length - 1} onPress={() => move(i, 1)} style={[st.icon, i === exercises.length - 1 && { opacity: 0.3 }]}>
+                <ChevronDown size={18} color={C.muted} />
+              </Pressable>
+              <Pressable accessibilityLabel={e.name + " entfernen"} onPress={() => setExercises(exercises.filter((x) => x.id !== e.id))} style={st.icon}>
+                <X size={17} color={C.muted} />
+              </Pressable>
+            </View>
+            <View style={[s.row, { gap: 6, flexWrap: "wrap" }]}>
+              {([
+                ["sets", "Sätze", 1, 22],
+                ["reps", timed(e.name) ? "Sekunden" : "Wdh.", timed(e.name) ? 5 : 1, 28],
+                ["weight", "kg", 2.5, 40],
+              ] as const).map(([k, label, step, width]) => (
+                <View key={k} style={{ gap: 4 }}>
+                  <Text style={[s.micro, { textAlign: "center" }]}>{label}</Text>
+                  <Stepper label={(e.name || "Übung") + " " + label} value={e.raw?.[k] ?? String(e[k]).replace(".", ",")} step={step} width={width} decimal={k === "weight"} onChange={(v) => setField(e.id, k, v)} />
+                </View>
+              ))}
+            </View>
           </View>
         ))}
-        <Pressable onPress={() => setExercises([...exercises, { id: newId("ex"), name: "", sets: 3, reps: 10, weight: 0 }])}>
-          <Text style={s.link}>+ Übung hinzufügen</Text>
-        </Pressable>
+        <View style={[s.row, { flexWrap: "wrap" }]}>
+          <Button quiet icon={Plus} onPress={() => setAdding(!adding)}>Übung hinzufügen</Button>
+          {!coreBlock.every((n) => exercises.some((e) => e.name === n)) && (
+            <Button quiet onPress={addCore}>Bauch-Block anhängen</Button>
+          )}
+        </View>
+        {adding && (
+          <View style={{ gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
+            <View style={s.wrap}>
+              {library.map((g) => (
+                <Chip key={g.group} label={g.group} active={group === g.group} color={sport.color} onPress={() => setGroup(g.group)} />
+              ))}
+            </View>
+            <View style={s.wrap}>
+              {(library.find((g) => g.group === group)?.items || []).map((item) => {
+                const added = exercises.some((e) => e.name === item.name);
+                return (
+                  <Pressable
+                    key={item.name}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: added }}
+                    disabled={added}
+                    onPress={() => add([item.name])}
+                    style={[s.filter, added && { opacity: 0.45 }]}
+                  >
+                    <Text style={s.filterText}>{added ? "✓ " : "+ "}{item.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable accessibilityRole="button" onPress={() => setExercises([...exercises, { id: newId("ex"), name: "", sets: 3, reps: 10, weight: 0 }])}>
+              <Text style={s.link}>+ Eigene Übung</Text>
+            </Pressable>
+          </View>
+        )}
+        <Text style={s.micro}>Dein Verlauf hängt am Übungsnamen. Behältst du den Namen, bleiben Bestwerte und Vorschläge erhalten.</Text>
       </View>
       {error ? <Text style={s.formError}>{error}</Text> : null}
     </Sheet>
@@ -662,3 +730,7 @@ export function TrainingScreen() {
     </Shell>
   );
 }
+
+const st = StyleSheet.create({
+  icon: { width: 34, height: 40, alignItems: "center", justifyContent: "center" },
+});
