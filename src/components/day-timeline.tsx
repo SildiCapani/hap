@@ -161,6 +161,7 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
   const [series, setSeries] = useState<{ task: Task; time: string } | null>(null);
   const [travel, setTravel] = useState<AgendaItem | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [late, setLate] = useState(false);
   const { timed: all, allDay } = agenda(state, day);
   const nowMin = now.getHours() * 60 + now.getMinutes();
   // In compact mode today starts one hour before now; the past stays one tap away.
@@ -171,10 +172,12 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
   const first = cut
     ? cut / 60
     : Math.min(7, ...timed.map((i) => Math.floor(i.start / 60)));
-  const last = Math.max(
-    22,
-    ...timed.map((i) => Math.ceil(Math.max(i.end, i.start + 30) / 60)),
+  // The evening ends at 22:00 (or with the last item); one tap shows it until midnight.
+  const natural = Math.min(
+    24,
+    Math.max(22, ...timed.map((i) => Math.ceil(Math.max(i.end, i.start + 30) / 60))),
   );
+  const last = late ? 24 : natural;
   const hours = Array.from({ length: last - first }, (_, i) => first + i);
   const top = (mins: number) => ((mins - first * 60) / 60) * HOUR;
   function open(item: AgendaItem) {
@@ -409,6 +412,18 @@ export function DayTimeline({ day, compact = false }: { day: string; compact?: b
           </View>
         )}
       </View>
+      {natural < 24 && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            tap();
+            setLate(!late);
+          }}
+          style={[s.row, { paddingHorizontal: 16, paddingTop: 10 }]}
+        >
+          <Text style={s.link}>{late ? "Späte Stunden ausblenden" : "Bis 24:00 anzeigen"}</Text>
+        </Pressable>
+      )}
       <Pressable
         accessibilityRole="button"
         onPress={() => edit(day)}
