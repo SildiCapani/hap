@@ -7,7 +7,7 @@ const config = getDefaultConfig(__dirname);
 
 // Local web development has no Netlify Functions. The timetable and calendar
 // imports are served by the same function code here, so they work on localhost.
-const localFunctions = ["uni-calendar", "ical"];
+const localFunctions = ["uni-calendar", "ical", "quotes"];
 config.server.enhanceMiddleware = (middleware) => async (req, res, next) => {
   const name = localFunctions.find((f) =>
     req.url?.startsWith("/.netlify/functions/" + f),

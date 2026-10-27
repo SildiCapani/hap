@@ -60,6 +60,7 @@ import {
   Trophy,
   Utensils,
   Video,
+  Wallet,
   X,
   type LucideIcon,
 } from "lucide-react-native";
@@ -123,6 +124,7 @@ const nav = [
   { path: "/study", label: "Lernen", icon: Brain },
   { path: "/training", label: "Training", icon: Dumbbell },
   { path: "/meals", label: "Essen", icon: Utensils },
+  { path: "/money", label: "Geld", icon: Wallet },
   { path: "/progress", label: "Fortschritt", icon: Trophy },
 ];
 export type Preset = Partial<Omit<Task, "id" | "skipped">>;

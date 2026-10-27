@@ -133,6 +133,13 @@ ob die Cloud-Daten übernommen werden sollen.
 
 Barcodes werden direkt bei Open Food Facts nachgeschlagen (kostenlos, ohne Netlify).
 
+## ETF-Kurse (Geld)
+
+`quotes` sucht zu einer ISIN die Euro-Notierung (Xetra bevorzugt) und liefert den
+aktuellen Kurs plus ein Jahr Tagesschlusskurse von Yahoo Finance. Kostenlos, ohne
+API-Schlüssel, nur mit `HAP_ACCESS_TOKEN`. Das ist keine offizielle Schnittstelle:
+Findet sie einen ETF nicht, trägt man in Hap das Börsenkürzel ein (z. B. `VWCE.DE`).
+
 ## Offline
 
 Der Service Worker speichert die App-Dateien, damit Hap auch ohne Netz startet.

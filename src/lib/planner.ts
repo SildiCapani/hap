@@ -162,6 +162,46 @@ export type TransportSettings = {
   buffer: number;
   remind: number; // minutes before leaving, -1 = off
 };
+// Money: recurring rules (salary, weekly money, rent, subscriptions, savings
+// plans) produce their bookings by date; overrides change one booking.
+export type MoneyKind = "income" | "fixed" | "abo" | "saving";
+export type MoneyRule = {
+  id: string;
+  kind: MoneyKind;
+  name: string;
+  amount: number;
+  every: "month" | "week";
+  day: number; // month: 1–31 (last day in shorter months), week: 0 = Sunday … 6
+  start: string; // first day it counts
+  end?: string; // last day it counts (cancelled subscription)
+  holdingId?: string; // a savings plan buys into this holding
+};
+export type MoneyEntry = {
+  id: string;
+  date: string;
+  amount: number;
+  kind: "expense" | "income";
+  category: string;
+  note: string;
+};
+export type Holding = {
+  id: string;
+  name: string;
+  isin: string;
+  symbol: string; // optional ticker, e.g. VWCE.DE, if the ISIN is not found
+  cash: boolean; // Tagesgeld/Konto: no price, value = balance
+  shares: number; // pieces on `since` (from the broker app)
+  invested: number; // paid in until `since` (cash: balance on `since`)
+  since: string;
+};
+export type Quote = {
+  symbol: string;
+  name: string;
+  currency: string;
+  price: number;
+  at: string; // when it was fetched
+  history: { date: string; close: number }[];
+};
 export type Goal = "bulk" | "cut" | "maintain";
 export type Profile = {
   age: number;
@@ -218,6 +258,13 @@ export type PlannerState = {
   transport: TransportSettings;
   groceryList: { weekStart: string; basis: string; items: MealPlan["groceries"] } | null;
   weekPlanned: string; // Monday of the last week planned with the Sunday review
+  payday: number; // day of month the money period starts, 0 = money not set up
+  moneyRules: MoneyRule[];
+  moneyEntries: MoneyEntry[];
+  moneyOverrides: Record<string, number>; // "<ruleId>:<date>" → amount of that one booking
+  budgets: Record<string, number>; // monthly limit per spending category
+  holdings: Holding[];
+  quotes: Record<string, Quote>; // per holding id, fetched on each device
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -276,6 +323,13 @@ const extras = (): Omit<
   transport: { ...defaultTransport },
   groceryList: null,
   weekPlanned: "",
+  payday: 0,
+  moneyRules: [],
+  moneyEntries: [],
+  moneyOverrides: {},
+  budgets: {},
+  holdings: [],
+  quotes: {},
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {
@@ -557,7 +611,12 @@ export function readState(raw: string): PlannerState {
       value.workouts,
       value.workoutLogs,
       value.bodyWeight,
+      value.moneyRules,
+      value.moneyEntries,
+      value.holdings,
     ].every(isArray) ||
+    !value.moneyRules.every((r) => typeof r.id === "string" && Number.isFinite(r.amount) && Number.isFinite(r.day) && validDate(r.start)) ||
+    !value.moneyEntries.every((e) => typeof e.id === "string" && validDate(e.date) && Number.isFinite(e.amount)) ||
     !value.exams.every(
       (e) =>
         typeof e.id === "string" &&

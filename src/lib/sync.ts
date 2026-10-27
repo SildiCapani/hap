@@ -13,6 +13,7 @@ export const LOCAL_KEYS = [
   "uniEvents",
   "uniSynced",
   "calEvents",
+  "quotes",
 ] as const;
 
 export type Synced = Record<string, unknown>;

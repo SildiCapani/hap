@@ -37,7 +37,7 @@ function Range({ options, value, set, color }: { options: { days: number; label:
   );
 }
 
-function Tiles({ items }: { items: { label: string; value: string; detail?: string; color?: string }[] }) {
+export function Tiles({ items }: { items: { label: string; value: string; detail?: string; color?: string }[] }) {
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       {items.map((t) => (
@@ -51,7 +51,7 @@ function Tiles({ items }: { items: { label: string; value: string; detail?: stri
   );
 }
 
-function Section({ title, detail, children }: { title: string; detail?: string; children: ReactNode }) {
+export function Section({ title, detail, children }: { title: string; detail?: string; children: ReactNode }) {
   return (
     <View style={{ gap: 12 }}>
       <View style={[s.row, { justifyContent: "space-between", alignItems: "baseline" }]}>
@@ -63,10 +63,10 @@ function Section({ title, detail, children }: { title: string; detail?: string; 
   );
 }
 
-function Tips({ list }: { list: Insight[] }) {
+export function Tips({ list, title = "Was du verbessern kannst" }: { list: Insight[]; title?: string }) {
   if (!list.length) return null;
   return (
-    <Section title="Was du verbessern kannst">
+    <Section title={title}>
       {list.map((i) => (
         <View key={i.text} style={[s.row, { alignItems: "flex-start", gap: 10, padding: 12, borderRadius: 14, backgroundColor: i.tone === "good" ? "#1B2620" : "#2B1F1C" }]}>
           {i.tone === "good" ? <ThumbsUp size={16} color={food} /> : <Lightbulb size={16} color={C.green} />}
