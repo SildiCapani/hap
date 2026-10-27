@@ -139,6 +139,13 @@ Barcodes werden direkt bei Open Food Facts nachgeschlagen (kostenlos, ohne Netli
 aktuellen Kurs plus ein Jahr Tagesschlusskurse von Yahoo Finance. Kostenlos, ohne
 API-Schlüssel, nur mit `HAP_ACCESS_TOKEN`. Das ist keine offizielle Schnittstelle:
 Findet sie einen ETF nicht, trägt man in Hap das Börsenkürzel ein (z. B. `VWCE.DE`).
+Lehnt Yahoo den Server ab (z. B. 429), zeigt Hap das an und das Log nennt den Status.
+
+## Ausgaben aus Screenshots (Geld)
+
+`expense-scan` liest bis zu 5 Screenshots (Wallet, Trade Republic, Banking-App) mit
+`OPENAI_MODEL` aus – das Modell muss Bilder verstehen, wie beim Modul-Scan. Hap zeigt
+die Funde zum Prüfen; gebucht wird erst nach „eintragen“. Limit: 20 Scans pro Tag.
 
 ## Offline
 

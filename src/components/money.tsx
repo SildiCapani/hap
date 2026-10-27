@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
-import { Check, Minus, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from "lucide-react-native";
+import { Check, ImagePlus, Minus, Plus, RefreshCw, Square, SquareCheck, Trash2, TrendingUp, Wallet } from "lucide-react-native";
 import { newId, parseDate, shiftDay, type Holding, type MoneyEntry, type MoneyRule } from "@/lib/planner";
 import {
   categories,
@@ -16,9 +16,14 @@ import {
   periodSummary,
   projection,
   round2,
+  reviewScan,
   savingsCheck,
+  scanEntry,
+  scanExpenses,
   type Booking,
+  type ScanRow,
 } from "@/lib/money";
+import { pickScreenshots } from "@/lib/food";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { BarChart, Sparkline } from "./charts";
@@ -517,6 +522,132 @@ function HistorySheet({ close }: { close: () => void }) {
   );
 }
 
+// ---------- Screenshot-Import ----------
+
+const reasonText: Record<ScanRow["reason"], string> = {
+  "": "",
+  before: "vor diesem Gehaltsmonat",
+  duplicate: "schon eingetragen",
+  fixed: "bucht Hap schon (Fixkosten, Abo, Sparplan)",
+  other: "",
+};
+const typeText = { refund: "Erstattung", income: "Einnahme", transfer: "Sparplan / Umbuchung – zählt nicht", expense: "" };
+
+function ScanSheet({ close }: { close: () => void }) {
+  const { state, update } = usePlanner();
+  const today = useToday();
+  const { start } = period(state.payday, today);
+  const [phase, setPhase] = useState<{ busy: number; error: string }>({ busy: 0, error: "" });
+  const [rows, setRows] = useState<ScanRow[] | null>(null);
+  const [open, setOpen] = useState("");
+  const picked = (rows || []).filter((r) => r.pick);
+  const total = round2(picked.reduce((n, r) => n + (r.type === "expense" ? r.amount : 0), 0));
+
+  async function choose() {
+    let images: string[];
+    try {
+      images = await pickScreenshots(5);
+    } catch (error) {
+      return setPhase({ busy: 0, error: error instanceof Error ? error.message : "Die Bilder konnten nicht geladen werden." });
+    }
+    if (!images.length) return;
+    setPhase({ busy: images.length, error: "" });
+    const result = await scanExpenses(state, images, today);
+    if (typeof result === "string") return setPhase({ busy: 0, error: result });
+    setPhase({ busy: 0, error: result.length ? "" : "Auf den Screenshots waren keine Umsätze zu erkennen." });
+    setRows(result.length ? reviewScan(state, result, today) : null);
+  }
+  const change = (key: string, next: Partial<ScanRow>) => setRows((list) => (list || []).map((r) => (r.key === key ? { ...r, ...next } : r)));
+  function save() {
+    tap("success");
+    const added = picked.map((r) => scanEntry(r, newId("me")));
+    update((prev) => ({ ...prev, moneyEntries: [...prev.moneyEntries, ...added] }));
+    close();
+  }
+
+  return (
+    <Sheet
+      title="Aus Screenshots"
+      subtitle={"Gehaltsmonat seit " + long(start)}
+      close={close}
+      footer={
+        rows ? (
+          <>
+            <Button quiet icon={ImagePlus} onPress={() => void choose()} disabled={!!phase.busy}>Andere</Button>
+            <Button icon={Check} disabled={!picked.length} onPress={save}>
+              {picked.length ? picked.length + " eintragen · " + euro(total) : "Nichts ausgewählt"}
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+      {phase.busy ? (
+        <View style={[s.row, { gap: 12, paddingVertical: 24, justifyContent: "center" }]}>
+          <ActivityIndicator color={C.green} />
+          <Text style={s.muted}>Lese {phase.busy === 1 ? "den Screenshot" : phase.busy + " Screenshots"} … (bis zu 1 Minute)</Text>
+        </View>
+      ) : rows ? (
+        <View>
+          <Text style={[s.micro, { marginBottom: 6 }]}>Haken = wird eingetragen. Antippen ändert die Kategorie.</Text>
+          {rows.map((r) => {
+            const c = categoryOf(r.category);
+            const why = reasonText[r.reason];
+            const Box = r.pick ? SquareCheck : Square;
+            return (
+              <View key={r.key} style={{ borderBottomWidth: 1, borderBottomColor: C.line, opacity: r.pick ? 1 : 0.6 }}>
+                <View style={[s.row, { gap: 10, minHeight: 52 }]}>
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: r.pick, disabled: r.type === "transfer" }}
+                    accessibilityLabel={r.merchant + " übernehmen"}
+                    disabled={r.type === "transfer"}
+                    onPress={() => change(r.key, { pick: !r.pick })}
+                    hitSlop={8}
+                  >
+                    <Box size={22} color={r.pick ? C.green : C.muted} />
+                  </Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => setOpen(open === r.key ? "" : r.key)} disabled={r.type !== "expense"} style={[s.row, { flex: 1, gap: 10, minWidth: 0 }]}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[s.body, { fontSize: 15 }]} numberOfLines={1}>{r.merchant}</Text>
+                      <Text style={s.micro} numberOfLines={1}>
+                        {short(r.date)} · {r.type === "expense" ? c.label : typeText[r.type]}
+                        {why ? " · " + why : ""}
+                      </Text>
+                    </View>
+                    <Text style={[s.body, { fontWeight: "600", fontVariant: ["tabular-nums"] }, r.type !== "expense" ? { color: green } : null]}>
+                      {(r.type === "expense" ? "−" : "+") + euro(r.amount)}
+                    </Text>
+                  </Pressable>
+                </View>
+                {open === r.key && (
+                  <View style={[s.wrap, { paddingBottom: 12 }]}>
+                    {categories.map((k) => (
+                      <Chip key={k.key} label={k.label} active={r.category === k.key} color={k.color} onPress={() => { change(r.key, { category: k.key }); setOpen(""); }} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={{ gap: 14 }}>
+          <Text style={[s.body, { lineHeight: 22 }]}>
+            Mach Screenshots von deiner Umsatzliste in Wallet oder Trade Republic – bis zu 5 auf einmal. Hap liest Datum, Händler und Betrag aus und sortiert sie in Kategorien. Du prüfst alles, bevor es eingetragen wird.
+          </Text>
+          <Text style={s.micro}>
+            Was vor dem letzten Gehalt war, schon eingetragen ist oder von Hap selbst gebucht wird (Miete, Abos, Sparplan), ist nicht angehakt. Die Bilder gehen zum Auslesen an OpenAI und werden nicht gespeichert.
+          </Text>
+          <View style={s.row}>
+            <Button icon={ImagePlus} onPress={() => void choose()}>Screenshots auswählen</Button>
+          </View>
+        </View>
+      )}
+      {phase.error ? <Text style={s.formError}>{phase.error}</Text> : null}
+    </Sheet>
+  );
+}
+
 // ---------- Screen ----------
 
 function Row({ dot, title, sub, value, valueColor, onPress, dim }: { dot: string; title: string; sub?: string; value: string; valueColor?: string; onPress?: () => void; dim?: boolean }) {
@@ -541,6 +672,7 @@ function MoneyContent() {
   const [holding, setHolding] = useState<Holding | "new" | null>(null);
   const [budgets, setBudgets] = useState(false);
   const [history, setHistory] = useState(false);
+  const [scan, setScan] = useState(false);
   const [quoteState, setQuoteState] = useState<{ busy: boolean; error: string }>({ busy: false, error: "" });
   const [years, setYears] = useState(10);
   const p = periodSummary(state, today);
@@ -555,13 +687,19 @@ function MoneyContent() {
     setQuoteState({ busy: true, error: "" });
     const result = await fetchQuotes(state);
     if (typeof result === "string") return setQuoteState({ busy: false, error: result });
-    const missing = tracked.filter((h) => !result[h.id]).map((h) => h.name);
+    const missing = tracked.filter((h) => !result.quotes[h.id]);
+    const refused = missing.filter((h) => result.errors[h.id] === "refused");
+    const unknown = missing.filter((h) => result.errors[h.id] !== "refused").map((h) => h.name);
     update((prev) => {
       const quotes = { ...prev.quotes };
-      for (const [id, q] of Object.entries(result)) if (q) quotes[id] = q;
+      for (const [id, q] of Object.entries(result.quotes)) if (q) quotes[id] = q;
       return { ...prev, quotes };
     });
-    setQuoteState({ busy: false, error: missing.length ? "Kein Kurs gefunden für: " + missing.join(", ") + ". Trag das Börsenkürzel ein (z. B. VWCE.DE)." : "" });
+    const error = [
+      refused.length ? "Yahoo Finance lehnt die Kursabfrage gerade ab – später nochmal mit „Kurse“ versuchen." : "",
+      unknown.length ? "Kein Kurs gefunden für: " + unknown.join(", ") + ". Prüf die ISIN oder trag das Börsenkürzel ein (z. B. EUNL.DE)." : "",
+    ].filter(Boolean).join(" ");
+    setQuoteState({ busy: false, error });
   }
   // Prices older than six hours are refreshed when the page opens.
   const trackedKey = tracked.map((h) => h.id + h.isin + h.symbol).join();
@@ -602,6 +740,7 @@ function MoneyContent() {
         </Text>
         <View style={[s.row, { flexWrap: "wrap", marginTop: 8 }]}>
           <Button icon={Plus} onPress={() => setEntry({ kind: "expense" })}>Ausgabe</Button>
+          <Button quiet icon={ImagePlus} onPress={() => setScan(true)}>Screenshot</Button>
           <Button quiet onPress={() => setEntry({ kind: "income" })}>Einnahme</Button>
           <Button quiet icon={TrendingUp} onPress={() => setHistory(true)}>Verlauf</Button>
         </View>
@@ -742,7 +881,7 @@ function MoneyContent() {
                       dot={h.cash ? "#92B9DB" : kinds.saving.color}
                       title={h.name}
                       sub={[
-                        h.cash ? "Konto" : now.quote ? plain(round2(now.shares)) + " Stück · " + euro(now.price) : "Kurs wird geladen …",
+                        h.cash ? "Konto" : now.quote ? plain(round2(now.shares)) + " Stück · " + euro(now.price) : quoteState.busy ? "Kurs wird geladen …" : "ohne Kurs · " + (h.isin || h.symbol),
                         planList.map((r) => euro(r.amount, false) + " " + when(r)).join(" + "),
                       ].filter(Boolean).join(" · ")}
                       value={now.value === null ? euro(now.invested, false) : euro(Math.round(now.value), false)}
@@ -848,6 +987,7 @@ function MoneyContent() {
       {holding && <HoldingSheet holding={holding === "new" ? undefined : holding} close={() => setHolding(null)} />}
       {budgets && <BudgetSheet close={() => setBudgets(false)} />}
       {history && <HistorySheet close={() => setHistory(false)} />}
+      {scan && <ScanSheet close={() => setScan(false)} />}
     </View>
   );
 }

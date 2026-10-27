@@ -15,7 +15,7 @@ const MAX_BYTES = 600 * 1024;
 // Browsers: draw the photo straight into a small canvas. The full-size image
 // (12–48 MP on current iPhones) is never put on a canvas, which Safari refuses
 // above ~16 MP, and the result is re-encoded until it is small enough.
-async function compressWeb(asset: ImagePicker.ImagePickerAsset): Promise<string> {
+async function compressWeb(asset: ImagePicker.ImagePickerAsset, maxSide = MAX_SIDE, maxBytes = MAX_BYTES): Promise<string> {
   const blob = asset.file ?? (await (await fetch(asset.uri)).blob());
   const url = URL.createObjectURL(blob);
   try {
@@ -25,7 +25,7 @@ async function compressWeb(asset: ImagePicker.ImagePickerAsset): Promise<string>
       el.onerror = () => reject(new Error("Das Foto-Format kann dieser Browser nicht lesen. Stell in den iPhone-Einstellungen unter Kamera → Formate auf „Maximale Kompatibilität“."));
       el.src = url;
     });
-    let side = MAX_SIDE;
+    let side = maxSide;
     for (let attempt = 0; attempt < 4; attempt++) {
       const scale = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = document.createElement("canvas");
@@ -34,7 +34,7 @@ async function compressWeb(asset: ImagePicker.ImagePickerAsset): Promise<string>
       canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
       for (const quality of [0.72, 0.6, 0.5]) {
         const data = canvas.toDataURL("image/jpeg", quality);
-        if (data.length * 0.75 <= MAX_BYTES) return data;
+        if (data.length * 0.75 <= maxBytes) return data;
       }
       side = Math.round(side * 0.75);
     }
@@ -44,16 +44,16 @@ async function compressWeb(asset: ImagePicker.ImagePickerAsset): Promise<string>
   }
 }
 
-async function compressNative(asset: ImagePicker.ImagePickerAsset): Promise<string> {
+async function compressNative(asset: ImagePicker.ImagePickerAsset, maxSide = MAX_SIDE, maxBytes = MAX_BYTES): Promise<string> {
   const longest = Math.max(asset.width || 0, asset.height || 0);
   const context = ImageManipulator.manipulate(asset.uri);
   // Resize along the longer side so portrait photos shrink as well.
-  if (!longest || longest > MAX_SIDE)
-    context.resize(asset.height > asset.width ? { width: null, height: MAX_SIDE } : { width: MAX_SIDE, height: null });
+  if (!longest || longest > maxSide)
+    context.resize(asset.height > asset.width ? { width: null, height: maxSide } : { width: maxSide, height: null });
   const image = await context.renderAsync();
   for (const compress of [0.7, 0.55, 0.4]) {
     const saved = await image.saveAsync({ format: SaveFormat.JPEG, compress, base64: true });
-    if (saved.base64 && (saved.base64.length * 0.75 <= MAX_BYTES || compress === 0.4)) return "data:image/jpeg;base64," + saved.base64;
+    if (saved.base64 && (saved.base64.length * 0.75 <= maxBytes || compress === 0.4)) return "data:image/jpeg;base64," + saved.base64;
   }
   throw new Error("Das Foto konnte nicht verarbeitet werden.");
 }
@@ -76,6 +76,20 @@ export async function pickPhoto(source: "camera" | "library"): Promise<string | 
   const asset = result.canceled ? null : result.assets?.[0];
   if (!asset) return null;
   return Platform.OS === "web" ? compressWeb(asset) : compressNative(asset);
+}
+
+// Screenshots keep more pixels than food photos so small list text stays
+// readable; a tall iPhone screenshot ends up about 830 × 1800 px.
+export async function pickScreenshots(limit = 5): Promise<string[]> {
+  if (Platform.OS !== "web") {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) throw new Error("Bitte erlaube Hap den Zugriff auf deine Fotos.");
+  }
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "images", quality: 0.9, allowsMultipleSelection: true, selectionLimit: limit, orderedSelection: true });
+  const assets = result.canceled ? [] : (result.assets || []).slice(0, limit);
+  const out: string[] = [];
+  for (const asset of assets) out.push(Platform.OS === "web" ? await compressWeb(asset, 1800, 700 * 1024) : await compressNative(asset, 1800, 700 * 1024));
+  return out;
 }
 
 export async function scanFood(

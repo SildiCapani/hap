@@ -1,4 +1,4 @@
-import { parseDate, shiftDay, type Holding, type MoneyRule, type PlannerState, type Quote } from "./planner.ts";
+import { parseDate, shiftDay, type Holding, type MoneyEntry, type MoneyRule, type PlannerState, type Quote } from "./planner.ts";
 
 // Money planning from recurring rules plus what was entered by hand. All
 // amounts are euros, positive; the kind says which way the money goes.
@@ -230,9 +230,11 @@ export function parseAmount(value: string) {
   return Number.isFinite(n) && n >= 0 ? round2(n) : NaN;
 }
 
-export async function fetchQuotes(state: Pick<PlannerState, "apiUrl" | "accessToken" | "holdings">): Promise<Record<string, Quote | null> | string> {
+export type QuoteResult = { quotes: Record<string, Quote | null>; errors: Record<string, "refused" | "not-found"> };
+
+export async function fetchQuotes(state: Pick<PlannerState, "apiUrl" | "accessToken" | "holdings">): Promise<QuoteResult | string> {
   const items = state.holdings.filter((h) => !h.cash && (h.isin || h.symbol)).map((h) => ({ id: h.id, isin: h.isin, symbol: h.symbol }));
-  if (!items.length) return {};
+  if (!items.length) return { quotes: {}, errors: {} };
   if (!state.accessToken) return "Für Kurse braucht Hap deinen App-Zugang (Einstellungen).";
   const response = await fetch(state.apiUrl.replace(/\/$/, "") + "/.netlify/functions/quotes", {
     method: "POST",
@@ -244,5 +246,62 @@ export async function fetchQuotes(state: Pick<PlannerState, "apiUrl" | "accessTo
   if (response.status === 401) return "Der App-Zugang stimmt nicht mit HAP_ACCESS_TOKEN auf Netlify überein.";
   if (response.status === 404) return "Die Kursabfrage ist auf Netlify noch nicht verfügbar (neu deployen).";
   if (!response.ok) return "Die Kurse konnten gerade nicht geladen werden.";
-  return ((await response.json()) as { quotes: Record<string, Quote | null> }).quotes;
+  const data = (await response.json()) as Partial<QuoteResult>;
+  return { quotes: data.quotes || {}, errors: data.errors || {} };
+}
+
+// ---------- Screenshot-Import ----------
+
+export type ScanItem = { date: string; merchant: string; amount: number; type: "expense" | "refund" | "income" | "transfer"; category: string };
+// Why a found payment is not ticked by default.
+export type ScanReason = "" | "before" | "duplicate" | "fixed" | "other";
+export type ScanRow = ScanItem & { key: string; reason: ScanReason; pick: boolean };
+
+const daysApart = (a: string, b: string) => Math.abs(Math.round((parseDate(a).getTime() - parseDate(b).getTime()) / 864e5));
+const same = (a: number, b: number) => Math.abs(a - b) < 0.005;
+
+// Sorts what the screenshots showed against the current pay period: payments
+// before the last payday, ones already entered and ones Hap books itself
+// (rent, abos, savings plans) start unticked.
+export function reviewScan(state: PlannerState, items: ScanItem[], today: string): ScanRow[] {
+  const { start } = period(state.payday, today);
+  const booked = state.moneyRules
+    .filter((r) => r.kind !== "income")
+    .flatMap((rule) => occurrences(rule, shiftDay(start, -45), today).map((date) => ({ date, amount: amountOn(state, rule, date) })));
+  const seen = new Set<string>();
+  return items.flatMap((item, i) => {
+    const id = item.date + "|" + item.amount + "|" + item.merchant.toLowerCase();
+    if (seen.has(id)) return [];
+    seen.add(id);
+    const reason: ScanReason =
+      item.type !== "expense" ? "other"
+      : item.date < start ? "before"
+      : state.moneyEntries.some((e) => e.kind === "expense" && same(e.amount, item.amount) && daysApart(e.date, item.date) <= 1) ? "duplicate"
+      : booked.some((b) => same(b.amount, item.amount) && daysApart(b.date, item.date) <= 5) ? "fixed"
+      : "";
+    return [{ ...item, key: "s" + i, reason, pick: !reason }];
+  });
+}
+
+// Refunds count as money coming back; everything else as an expense.
+export const scanEntry = (row: ScanItem, id: string): MoneyEntry =>
+  row.type === "expense"
+    ? { id, date: row.date, amount: row.amount, kind: "expense", category: row.category, note: row.merchant }
+    : { id, date: row.date, amount: row.amount, kind: "income", category: "einnahme", note: (row.type === "refund" ? "Erstattung " : "") + row.merchant };
+
+export async function scanExpenses(state: Pick<PlannerState, "apiUrl" | "accessToken">, images: string[], today: string): Promise<ScanItem[] | string> {
+  if (!state.accessToken) return "Zum Auslesen braucht Hap deinen App-Zugang (Einstellungen).";
+  const response = await fetch(state.apiUrl.replace(/\/$/, "") + "/.netlify/functions/expense-scan", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ images, today }),
+    signal: AbortSignal.timeout(100000),
+  }).catch(() => null);
+  if (!response) return "Keine Verbindung. Versuch es gleich nochmal.";
+  if (response.status === 401) return "Der App-Zugang stimmt nicht mit HAP_ACCESS_TOKEN auf Netlify überein.";
+  if (response.status === 429) return "Tageslimit fürs Auslesen erreicht (schützt vor Kosten). Morgen geht es weiter.";
+  if (response.status === 503 || response.status === 404) return "Das Auslesen ist auf Netlify noch nicht verfügbar (neu deployen, OPENAI_API_KEY prüfen).";
+  if (response.status === 400 || response.status === 413) return "Die Screenshots konnten nicht übertragen werden. Versuch es mit weniger auf einmal.";
+  if (!response.ok) return "Die Screenshots konnten gerade nicht ausgelesen werden. Versuch es nochmal.";
+  return ((await response.json()) as { items: ScanItem[] }).items || [];
 }

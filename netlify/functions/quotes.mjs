@@ -8,14 +8,24 @@ const euroSuffixes = [".DE", ".SG", ".F", ".MU", ".DU", ".BE", ".HM", ".HA", ".A
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
 const SYMBOL = /^[A-Z0-9][A-Z0-9.\-]{0,19}$/i;
 
+// Yahoo answers 401/403/429 when it refuses a server (rate limit or blocked
+// IP); that is reported separately from "this fund does not exist there".
+export class Refused extends Error {}
+
 async function get(url) {
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error("Upstream " + response.status);
+  let response;
+  try {
+    response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+  } catch {
+    throw new Refused("Upstream unreachable");
+  }
+  if ([401, 403, 429].includes(response.status) || response.status >= 500) throw new Refused("Upstream " + response.status);
+  if (!response.ok) return null;
   return response.json();
 }
 
 const search = async (q) =>
-  ((await get("https://query1.finance.yahoo.com/v1/finance/search?quotesCount=15&newsCount=0&q=" + encodeURIComponent(q))).quotes || []).filter(
+  ((await get("https://query1.finance.yahoo.com/v1/finance/search?quotesCount=15&newsCount=0&q=" + encodeURIComponent(q)))?.quotes || []).filter(
     (x) => typeof x.symbol === "string" && SYMBOL.test(x.symbol),
   );
 const rank = (s) => {
@@ -53,13 +63,8 @@ export function parseChart(data) {
   };
 }
 
-async function chart(symbol) {
-  try {
-    return parseChart(await get("https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(symbol) + "?range=1y&interval=1d"));
-  } catch {
-    return null;
-  }
-}
+const chart = async (symbol) =>
+  parseChart(await get("https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(symbol) + "?range=1y&interval=1d"));
 
 async function lookup({ isin, symbol }) {
   if (symbol) return chart(symbol);
@@ -91,13 +96,16 @@ export default async function handler(request) {
     .map((i) => ({ ...i, symbol: SYMBOL.test(i.symbol) ? i.symbol : "" }));
   if (!clean.length) return json({ error: "Invalid input" }, 400);
   const quotes = {};
+  const errors = {};
   for (const item of clean) {
     try {
       quotes[item.id] = await lookup(item);
+      if (!quotes[item.id]) errors[item.id] = "not-found";
     } catch (error) {
-      console.error(error instanceof Error ? error.message : "Quote lookup failed");
+      console.error("Quote lookup failed:", error instanceof Error ? error.message : error);
       quotes[item.id] = null;
+      errors[item.id] = error instanceof Refused ? "refused" : "not-found";
     }
   }
-  return json({ quotes });
+  return json({ quotes, errors });
 }

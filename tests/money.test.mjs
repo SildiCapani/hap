@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createState, readState } from "../src/lib/planner.ts";
-import { holdingNow, occurrences, parseAmount, period, periodSummary, projection, savingsCheck, sharesOn } from "../src/lib/money.ts";
-import { parseChart } from "../netlify/functions/quotes.mjs";
+import { holdingNow, occurrences, parseAmount, period, periodSummary, projection, reviewScan, savingsCheck, scanEntry, sharesOn } from "../src/lib/money.ts";
+import quotesHandler, { parseChart } from "../netlify/functions/quotes.mjs";
+import { cleanExpenses } from "../netlify/functions/expense-scan.mjs";
 import { LOCAL_KEYS } from "../src/lib/sync.ts";
 
 const rule = (id, kind, name, amount, day, every = "month", extra = {}) => ({ id, kind, name, amount, every, day, start: "2026-10-25", ...extra });
@@ -94,4 +95,47 @@ test("without everyday spending there is no made-up leftover", () => {
   assert.equal(check.basis, "none");
   assert.ok(!check.tips.some((t) => /übrig/.test(t.text)));
   assert.equal(savingsCheck({ ...mine(), budgets: { essen: 200 } }, "2026-10-27").basis, "budgets");
+});
+
+test("quotes tells a refusing Yahoo apart from an unknown fund", async () => {
+  const token = "t".repeat(40);
+  process.env.HAP_ACCESS_TOKEN = token;
+  const realFetch = globalThis.fetch;
+  const ask = (items) => quotesHandler(new Request("http://x/", { method: "POST", headers: { Authorization: "Bearer " + token }, body: JSON.stringify({ items }) })).then((r) => r.json());
+  try {
+    globalThis.fetch = async () => new Response("Too Many Requests", { status: 429 });
+    assert.deepEqual(await ask([{ id: "a", isin: "IE00B4L5Y983" }]), { quotes: { a: null }, errors: { a: "refused" } });
+    globalThis.fetch = async () => Response.json({ quotes: [] });
+    assert.deepEqual(await ask([{ id: "a", isin: "IE00B4L5Y983" }]), { quotes: { a: null }, errors: { a: "not-found" } });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("screenshot payments are checked against the pay period, entries and Hap's own bookings", () => {
+  const item = (date, merchant, amount, type = "expense", category = "essen") => ({ date, merchant, amount, type, category });
+  const rows = reviewScan(mine(), [
+    item("2026-11-02", "Lidl", 12.5),
+    item("2026-11-02", "Lidl", 12.5),
+    item("2026-10-27", "REWE", 23.4),
+    item("2026-11-01", "Vermieter", 600, "expense", "sonstiges"),
+    item("2026-10-24", "Bäcker", 3.2, "expense", "mensa"),
+    item("2026-11-02", "Sparplan", 100, "transfer", "sonstiges"),
+    item("2026-10-30", "Zalando", 19.99, "refund", "sonstiges"),
+  ], "2026-11-03");
+  assert.deepEqual(rows.map((r) => [r.merchant, r.reason, r.pick]), [
+    ["Lidl", "", true],
+    ["REWE", "duplicate", false],
+    ["Vermieter", "fixed", false],
+    ["Bäcker", "before", false],
+    ["Sparplan", "other", false],
+    ["Zalando", "other", false],
+  ]);
+  assert.deepEqual(scanEntry(rows[0], "x"), { id: "x", date: "2026-11-02", amount: 12.5, kind: "expense", category: "essen", note: "Lidl" });
+  assert.equal(scanEntry(rows[5], "y").kind, "income");
+  assert.equal(scanEntry(rows[5], "y").note, "Erstattung Zalando");
+  assert.deepEqual(
+    cleanExpenses({ items: [{ date: "2026-12-01", merchant: " DB ", amount: -9.9, type: "expense", category: "bahn" }, { date: "", merchant: "x", amount: 0, type: "expense", category: "essen" }] }, "2026-11-03"),
+    [{ date: "2026-11-03", merchant: "DB", amount: 9.9, type: "expense", category: "sonstiges" }],
+  );
 });
