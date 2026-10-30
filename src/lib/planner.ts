@@ -202,6 +202,10 @@ export type Quote = {
   at: string; // when it was fetched
   history: { date: string; close: number }[];
 };
+// AI weekly focus: at most three short points, one entry per week (Monday).
+export type FocusArea = "training" | "essen" | "geld" | "lernen" | "alltag";
+export type FocusItem = { area: FocusArea; title: string; why: string; action: string; done: boolean };
+export type WeekFocus = { id: string; created: string; good: string; items: FocusItem[] };
 export type Goal = "bulk" | "cut" | "maintain";
 export type Profile = {
   age: number;
@@ -265,6 +269,7 @@ export type PlannerState = {
   budgets: Record<string, number>; // monthly limit per spending category
   holdings: Holding[];
   quotes: Record<string, Quote>; // per holding id, fetched on each device
+  weekFocus: WeekFocus[];
 };
 export const defaultProfile: Profile = {
   age: 22,
@@ -330,6 +335,7 @@ const extras = (): Omit<
   budgets: {},
   holdings: [],
   quotes: {},
+  weekFocus: [],
 });
 export const storageKey = "hap.planner.v1";
 export const repeats: Record<Repeat, string> = {
@@ -585,6 +591,9 @@ export function validMealPlan(value: unknown): value is MealPlan {
   );
 }
 const isArray = (v: unknown) => Array.isArray(v);
+const validWeekFocus = (f: WeekFocus) =>
+  !!f && validDate(f.id) && typeof f.good === "string" && isArray(f.items) &&
+  f.items.every((i) => typeof i.title === "string" && typeof i.why === "string" && typeof i.action === "string" && typeof i.done === "boolean");
 export function readState(raw: string): PlannerState {
   const value = JSON.parse(raw) as PlannerState;
   if (!value || typeof value !== "object")
@@ -597,6 +606,7 @@ export function readState(raw: string): PlannerState {
   if (typeof value.profile.kcalOffset !== "number" || !Number.isFinite(value.profile.kcalOffset)) delete value.profile.kcalOffset;
   value.notify = { ...defaultNotify, ...value.notify };
   value.transport = { ...defaultTransport, ...(value.transport as Partial<TransportSettings>) };
+  value.weekFocus = isArray(value.weekFocus) ? value.weekFocus.filter(validWeekFocus) : [];
   if (
     typeof value.raplaUrl !== "string" ||
     ![

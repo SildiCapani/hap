@@ -51,6 +51,7 @@ import { DayTimeline, useNow } from "./day-timeline";
 import { InstallCard } from "./install-card";
 import { DueTodos } from "./todos";
 import { WeekPlanCard } from "./week-plan";
+import { FocusCard } from "./coach";
 import { Button, C, Pill, Sheet, Shell, TaskList, useToday, WeekStrip, s } from "./planner-ui";
 
 function Pulse({ color }: { color: string }) {
@@ -578,6 +579,7 @@ function TodayContent({ day, setSelected }: { day: string; setSelected: (d: stri
         <NowCard />
         <QuickActions />
         <WeekPlanCard />
+        <FocusCard />
         <DueTodos />
         <InstallCard />
         <View style={[s.sectionHeading, { marginTop: 8, marginBottom: 10 }]}>

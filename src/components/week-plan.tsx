@@ -5,6 +5,7 @@ import { defaultRemind } from "@/lib/todos";
 import { localStamp, newId, parseDate, shiftDay } from "@/lib/planner";
 import { hoursLabel } from "@/lib/study";
 import { AUTO_NOTE, autoSchedule, planningWeek, preview, review, suggestedTargets } from "@/lib/weekplan";
+import { focusFor } from "@/lib/coach";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Button, C, Pill, Sheet, s, useToday } from "./planner-ui";
@@ -34,7 +35,8 @@ export function WeekPlanSheet({ close }: { close: () => void }) {
   const next = preview(state, week);
   const [targets, setTargets] = useState(() => Object.fromEntries(suggestedTargets(state, week, today).map((t) => [t.exam.id, t.minutes])));
   const [result, setResult] = useState("");
-  const [goals, setGoals] = useState(["", "", ""]);
+  // The AI weekly focus, if there is one, pre-fills the goals.
+  const [goals, setGoals] = useState(() => [0, 1, 2].map((i) => focusFor(state, week)?.items[i]?.action || ""));
   const exams = state.exams.filter((e) => targets[e.id] !== undefined);
   const total = Object.values(targets).reduce((n, m) => n + m, 0);
   const autoCount = state.tasks.filter((t) => t.note === AUTO_NOTE && t.date >= week && t.date <= shiftDay(week, 6)).length;
@@ -145,7 +147,10 @@ export function WeekPlanSheet({ close }: { close: () => void }) {
             ) : null}
           </View>
         ))}
-        <Text style={s.micro}>Ziele landen als To-dos mit Frist Sonntag 20:00.</Text>
+        <Text style={s.micro}>
+          {focusFor(state, week)?.items.length ? "Vorgeschlagen aus deinem Wochenfokus – ändern oder leeren, wie du willst. " : ""}
+          Ziele landen als To-dos mit Frist Sonntag 20:00.
+        </Text>
       </Step>
     </Sheet>
   );
