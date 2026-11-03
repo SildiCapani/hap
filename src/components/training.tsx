@@ -300,9 +300,11 @@ function Session({ workout, day }: { workout: Workout; day: string }) {
 function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => void }) {
   const { state, update } = usePlanner();
   const [name, setName] = useState(workout?.name || "");
-  const [days, setDays] = useState<number[]>(workout?.weekdays || [1]);
-  const [rotate, setRotate] = useState(!!workout?.rotate);
   const partners = state.workouts.filter((w) => w.rotate && w.id !== workout?.id);
+  // All days of the rotation together, so turning it on never drops a day.
+  const joined = (own: number[]) => [...new Set([...own, ...partners.flatMap((w) => w.weekdays)])].sort();
+  const [days, setDays] = useState<number[]>(workout?.rotate ? joined(workout.weekdays) : workout?.weekdays || [1]);
+  const [rotate, setRotate] = useState(!!workout?.rotate);
   const [time, setTime] = useState(workout?.time || "18:00");
   const [duration, setDuration] = useState(workout?.duration || 60);
   const [exercises, setExercises] = useState<(Exercise & { raw?: Record<string, string> })[]>(
@@ -403,7 +405,7 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
         accessibilityState={{ checked: rotate }}
         onPress={() => {
           tap("select");
-          if (!rotate && partners.length) setDays(partners[0].weekdays);
+          if (!rotate) setDays(joined(days));
           setRotate(!rotate);
         }}
         style={[s.row, { gap: 12, padding: 12, borderRadius: 14, backgroundColor: "#17171B" }]}
