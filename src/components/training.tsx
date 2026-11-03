@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View, type DimensionValue } from "react-native";
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming, Easing } from "react-native-reanimated";
-import { CalendarClock, Check, ChevronDown, ChevronUp, Dumbbell, Flame, Minus, Pencil, Play, Plus, Scale, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
+import { CalendarClock, Check, ChevronDown, ChevronUp, Dumbbell, Flame, Minus, Pencil, Play, Plus, Scale, Square, SquareCheck, Timer, Trash2, TrendingUp, Trophy, X } from "lucide-react-native";
 import {
   categories,
   newId,
@@ -298,9 +298,11 @@ function Session({ workout, day }: { workout: Workout; day: string }) {
 }
 
 function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => void }) {
-  const { update } = usePlanner();
+  const { state, update } = usePlanner();
   const [name, setName] = useState(workout?.name || "");
   const [days, setDays] = useState<number[]>(workout?.weekdays || [1]);
+  const [rotate, setRotate] = useState(!!workout?.rotate);
+  const partners = state.workouts.filter((w) => w.rotate && w.id !== workout?.id);
   const [time, setTime] = useState(workout?.time || "18:00");
   const [duration, setDuration] = useState(workout?.duration || 60);
   const [exercises, setExercises] = useState<(Exercise & { raw?: Record<string, string> })[]>(
@@ -337,12 +339,14 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
       time,
       duration: Math.min(300, Math.max(10, duration)),
       exercises: list.map(({ raw: _raw, ...e }) => ({ ...e, name: e.name.trim() })),
+      ...(rotate ? { rotate: true } : {}),
     };
     tap("success");
-    update((prev) => ({
-      ...prev,
-      workouts: workout ? prev.workouts.map((w) => (w.id === workout.id ? next : w)) : [...prev.workouts, next],
-    }));
+    update((prev) => {
+      const workouts = workout ? prev.workouts.map((w) => (w.id === workout.id ? next : w)) : [...prev.workouts, next];
+      // Rotating workouts share one set of days.
+      return { ...prev, workouts: rotate ? workouts.map((w) => (w.rotate ? { ...w, weekdays: next.weekdays } : w)) : workouts };
+    });
     close();
   }
   const setField = (id: string, key: "name" | "sets" | "reps" | "weight", value: string) =>
@@ -381,7 +385,7 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
     >
       <Field label="Name" value={name} onChangeText={setName} placeholder="z. B. Push" maxLength={40} />
       <View>
-        <Text style={s.label}>Tage</Text>
+        <Text style={s.label}>{rotate ? "Tage im Wechsel" : "Tage"}</Text>
         <View style={s.wrap}>
           {[1, 2, 3, 4, 5, 6, 0].map((d) => (
             <Chip
@@ -394,6 +398,26 @@ function WorkoutEditor({ workout, close }: { workout?: Workout; close: () => voi
           ))}
         </View>
       </View>
+      <Pressable
+        accessibilityRole="switch"
+        accessibilityState={{ checked: rotate }}
+        onPress={() => {
+          tap("select");
+          if (!rotate && partners.length) setDays(partners[0].weekdays);
+          setRotate(!rotate);
+        }}
+        style={[s.row, { gap: 12, padding: 12, borderRadius: 14, backgroundColor: "#17171B" }]}
+      >
+        {rotate ? <SquareCheck size={20} color={sport.color} /> : <Square size={20} color={C.muted} />}
+        <View style={{ flex: 1 }}>
+          <Text style={s.body}>Im Wechsel</Text>
+          <Text style={[s.micro, { marginTop: 2, lineHeight: 17 }]}>
+            {partners.length
+              ? "Abwechselnd mit " + partners.map((w) => w.name).join(", ") + " – egal welcher Wochentag. Die Tage gelten für alle im Wechsel."
+              : "Für Push ↔ Pull: bei beiden einschalten. Dann wechseln sie sich an den gewählten Tagen ab, egal welcher Wochentag."}
+          </Text>
+        </View>
+      </Pressable>
       <View style={s.row}>
         <View style={{ flex: 1 }}>
           <TimeField label="Uhrzeit" value={time} onChange={setTime} />
@@ -704,7 +728,7 @@ function TrainingContent() {
               <Pressable key={w.id} onPress={() => setEditing(w)} style={[s.row, { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.line }]}>
                 <Dumbbell size={16} color={sport.color} />
                 <Text style={[s.body, { flex: 1, fontWeight: "600" }]}>{w.name}</Text>
-                <Text style={s.micro}>{w.weekdays.map((d) => weekdayShort[d]).join(" · ") || "ohne Tag"} · {w.time}</Text>
+                <Text style={s.micro}>{w.weekdays.map((d) => weekdayShort[d]).join(" · ") || "ohne Tag"} · {w.time}{w.rotate ? " · im Wechsel" : ""}</Text>
                 <Pencil size={14} color={C.muted} />
               </Pressable>
             ))}

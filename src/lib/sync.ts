@@ -13,6 +13,7 @@ export const LOCAL_KEYS = [
   "uniEvents",
   "uniSynced",
   "calEvents",
+  "calSynced",
   "quotes",
 ] as const;
 

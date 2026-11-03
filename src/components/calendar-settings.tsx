@@ -78,8 +78,8 @@ export function CalendarSettings() {
             </View>
             <Text style={[s.micro, cal.error ? { color: "#F2A0A5" } : null]}>
               {cal.error ||
-                (cal.syncedAt
-                  ? upcoming + " kommende Termine · aktualisiert " + new Date(cal.syncedAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+                (state.calSynced[cal.id]
+                  ? upcoming + " kommende Termine · aktualisiert " + new Date(state.calSynced[cal.id]).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
                   : calSyncing
                     ? "Wird geladen …"
                     : "Noch nicht geladen")}

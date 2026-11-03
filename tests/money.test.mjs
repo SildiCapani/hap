@@ -83,6 +83,7 @@ test("amounts in German notation, prices stay on each device, quotes parse", () 
   assert.equal(parseAmount("23.4"), 23.4);
   assert.ok(Number.isNaN(parseAmount("abc")));
   assert.ok(LOCAL_KEYS.includes("quotes"));
+  assert.ok(LOCAL_KEYS.includes("calSynced"), "each device loads its own calendar feeds");
   const state = readState(JSON.stringify({ ...createState(), payday: 25 }));
   assert.deepEqual([state.payday, state.moneyRules, state.holdings], [25, [], []]);
   assert.throws(() => readState(JSON.stringify({ ...createState(), moneyEntries: [{ id: "x", date: "kaputt", amount: 1 }] })));

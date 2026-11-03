@@ -407,6 +407,9 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             ...prev.calEvents.filter((e) => !fresh.some((r) => r.id === e.calId) && prev.calendars.some((c) => c.id === e.calId)),
             ...fresh.flatMap((r) => r.events || []),
           ],
+          // When this device loaded each feed. Kept per device: the events
+          // are local, so another device's fresh download says nothing here.
+          calSynced: { ...prev.calSynced, ...Object.fromEntries(fresh.map((r) => [r.id, new Date().toISOString()])) },
           calendars: prev.calendars.map((c) => {
             const r = results.find((x) => x.id === c.id);
             return r
@@ -427,7 +430,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     const due = () =>
       Date.now() - calTried.current > 10 * 60 * 1000 &&
       state.calendars.some(
-        (c) => !c.syncedAt || Date.now() - new Date(c.syncedAt).valueOf() > 2 * 3600 * 1000,
+        (c) => !state.calSynced[c.id] || Date.now() - new Date(state.calSynced[c.id]).valueOf() > 2 * 3600 * 1000,
       );
     const run = () => {
       calTried.current = Date.now();
@@ -443,7 +446,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       clearTimeout(startup);
       subscription.remove();
     };
-  }, [ready, state.calendars, syncCalendars]);
+  }, [ready, state.calendars, state.calSynced, syncCalendars]);
   // A running focus round completes even when the focus screen is closed.
   const focusEnd =
     state.activeFocus && state.activeFocus.pausedLeft === null

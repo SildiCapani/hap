@@ -87,6 +87,7 @@ export type Workout = {
   time: string;
   duration: number;
   exercises: Exercise[];
+  rotate?: boolean; // takes turns with the other rotating workouts on the shared days
 };
 export type WorkoutLog = {
   id: string;
@@ -258,6 +259,7 @@ export type PlannerState = {
   foodLog: FoodEntry[];
   calendars: Calendar[];
   calEvents: CalEvent[];
+  calSynced: Record<string, string>; // per calendar id: when this device last loaded it
   places: Place[];
   transport: TransportSettings;
   groceryList: { weekStart: string; basis: string; items: MealPlan["groceries"] } | null;
@@ -324,6 +326,7 @@ const extras = (): Omit<
   foodLog: [],
   calendars: [],
   calEvents: [],
+  calSynced: {},
   places: [],
   transport: { ...defaultTransport },
   groceryList: null,
@@ -606,6 +609,7 @@ export function readState(raw: string): PlannerState {
   if (typeof value.profile.kcalOffset !== "number" || !Number.isFinite(value.profile.kcalOffset)) delete value.profile.kcalOffset;
   value.notify = { ...defaultNotify, ...value.notify };
   value.transport = { ...defaultTransport, ...(value.transport as Partial<TransportSettings>) };
+  if (!value.calSynced || typeof value.calSynced !== "object" || isArray(value.calSynced)) value.calSynced = {};
   value.weekFocus = isArray(value.weekFocus) ? value.weekFocus.filter(validWeekFocus) : [];
   if (
     typeof value.raplaUrl !== "string" ||

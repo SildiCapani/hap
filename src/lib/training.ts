@@ -1,4 +1,5 @@
 import {
+  dateKey,
   newId,
   parseDate,
   shiftDay,
@@ -110,10 +111,38 @@ export function fromLibrary(name: string): Exercise {
 
 export const timed = (name: string) => /\(sek\.?\)|sekunden/i.test(name);
 
+// Rotation (e.g. Push ↔ Pull): the rotating workouts share their days and
+// take turns, no matter the weekday. The turn follows what was actually
+// trained: after the last logged one comes the next, and every planned
+// rotation day from today on moves it one further. Skipped days in the past
+// do not count, so a missed Push stays the next Push.
+export const rotation = (state: PlannerState) => {
+  const group = state.workouts.filter((w) => w.rotate);
+  return group.length > 1 ? { group, days: new Set(group.flatMap((w) => w.weekdays)) } : null;
+};
+
+export function rotationPick(state: PlannerState, day: string, today = dateKey()): Workout | null {
+  const rot = rotation(state);
+  if (!rot || !rot.days.has(parseDate(day).getDay())) return null;
+  const ids = rot.group.map((w) => w.id);
+  const logs = state.workoutLogs.filter((l) => ids.includes(l.workoutId) && l.date <= day).sort((a, b) => a.date.localeCompare(b.date));
+  const onDay = logs.find((l) => l.date === day);
+  if (onDay) return rot.group.find((w) => w.id === onDay.workoutId)!;
+  const last = logs[logs.length - 1];
+  let index = last ? ids.indexOf(last.workoutId) + 1 : 0;
+  for (let d = last && last.date >= today ? shiftDay(last.date, 1) : today; d < day; d = shiftDay(d, 1))
+    if (rot.days.has(parseDate(d).getDay())) index++;
+  return rot.group[index % ids.length];
+}
+
 export function workoutsFor(state: PlannerState, day: string): Workout[] {
   const weekday = parseDate(day).getDay();
   const moves = state.workoutMoves ?? [];
-  const regular = state.workouts.filter((w) => w.weekdays.includes(weekday) && !moves.some((m) => m.workoutId === w.id && m.from === day));
+  const rotating = !!rotation(state);
+  const pick = rotating ? rotationPick(state, day) : null;
+  const regular = state.workouts.filter(
+    (w) => (w.rotate && rotating ? pick?.id === w.id : w.weekdays.includes(weekday)) && !moves.some((m) => m.workoutId === w.id && m.from === day),
+  );
   const moved = moves.flatMap((m) => {
     const w = m.to === day ? state.workouts.find((x) => x.id === m.workoutId) : undefined;
     return w && !regular.some((r) => r.id === w.id) ? [{ ...w, time: m.time }] : [];
@@ -157,25 +186,83 @@ export function lastEntry(state: PlannerState, exerciseName: string, before?: st
   return null;
 }
 
-const lowerBody = /knie|beuge|kreuz|bein|squat|deadlift|press/i;
+// ---------- Progression ----------
+// Based on ACSM (2009): raise the load by about 2–10 % once the target reps
+// are beaten, and the NSCA "2-for-2" idea of confirming that over two
+// sessions. Steps are a percentage of the current weight (lower body ~5 %,
+// everything else ~2,5 %), rounded to what the equipment allows – so a step
+// stays 2,5 kg where 2,5 kg is the smallest sensible jump.
 
-// Double progression: when every set reached the target reps, add weight.
+const lowerCompound = /kniebeug|squat|kreuzheb|deadlift|beinpresse|hip ?thrust|ausfallschritt|bulgarian/i;
+const dumbbell = /kurzhantel|curl|seitheb|hammer|french|fliegend|russian|ausfallschritt/i;
+
+export function loadStep(name: string, weight: number) {
+  const min = dumbbell.test(name) ? (weight < 10 ? 1 : 2) : 2.5;
+  const ideal = weight * (lowerCompound.test(name) ? 0.05 : 0.025);
+  return Math.max(min, Math.round(ideal / min) * min);
+}
+
+export function sessionsOf(state: PlannerState, exerciseName: string, before?: string) {
+  return [...state.workoutLogs]
+    .filter((l) => !before || l.date < before)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .flatMap((l) => {
+      const entry = l.entries.find((e) => e.name === exerciseName && e.sets.length);
+      return entry ? [{ date: l.date, sets: entry.sets }] : [];
+    });
+}
+
+const kg = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
+const daysBetween = (a: string, b: string) => Math.round((parseDate(b).getTime() - parseDate(a).getTime()) / 864e5);
+
 export function suggestion(state: PlannerState, exercise: Exercise, day: string) {
-  const last = lastEntry(state, exercise.name, day);
+  const sessions = sessionsOf(state, exercise.name, day);
+  const last = sessions[sessions.length - 1];
   if (!last) return { weight: exercise.weight, reps: exercise.reps, note: "Erstes Mal: sauber starten" };
   const top = Math.max(...last.sets.map((s) => s.weight));
-  const hit = last.sets.length >= exercise.sets && last.sets.every((s) => s.reps >= exercise.reps);
+  const hit = (sets: { reps: number }[]) => sets.length >= exercise.sets && sets.every((s) => s.reps >= exercise.reps);
   if (top === 0 && timed(exercise.name))
-    return hit
+    return hit(last.sets)
       ? { weight: 0, reps: exercise.reps + 5, note: "Alle Sätze geschafft: +5 Sek." }
       : { weight: 0, reps: exercise.reps, note: "Gleiche Zeit wie letztes Mal" };
   if (top === 0)
-    return hit
+    return hit(last.sets)
       ? { weight: 0, reps: exercise.reps + 1, note: "Alle Sätze geschafft: +1 Wdh." }
       : { weight: 0, reps: exercise.reps, note: "Gleiche Wdh. wie letztes Mal" };
-  if (hit) {
-    const step = lowerBody.test(exercise.name) ? 5 : 2.5;
-    return { weight: top + step, reps: exercise.reps, note: "Alle Sätze geschafft: +" + String(step).replace(".", ",") + " kg" };
+
+  const step = loadStep(exercise.name, top);
+  const gap = daysBetween(last.date, day);
+  if (gap > 21) {
+    const back = Math.max(step, Math.round((top * 0.9) / step) * step);
+    return { weight: back, reps: exercise.reps, note: "Nach " + Math.round(gap / 7) + " Wochen Pause: " + kg(back) + " kg zum Einstieg" };
+  }
+  // Recent sessions at today's top weight, newest first.
+  const atTop: { date: string; sets: { reps: number; weight: number }[] }[] = [];
+  for (const x of [...sessions].reverse()) {
+    if (Math.max(...x.sets.map((s) => s.weight)) !== top) break;
+    atTop.push(x);
+  }
+  const working = last.sets.filter((s) => s.weight === top);
+  const surplus = Math.min(...working.map((s) => s.reps)) - exercise.reps;
+  const hits = atTop.findIndex((x) => !hit(x.sets));
+  const streak = hits < 0 ? atTop.length : hits;
+
+  if (hit(last.sets)) {
+    const novice = sessions.length < 6;
+    const big = step / top > 0.05;
+    // Small jumps follow quickly; big ones (e.g. 12 → 14 kg curls) wait
+    // until the reps clearly run ahead.
+    const ready = big ? surplus >= 2 || (streak >= 2 && surplus >= 1) : surplus >= 2 || streak >= 2 || novice;
+    if (gap > 10) return { weight: top, reps: exercise.reps, note: "Nach " + gap + " Tagen Pause: Gewicht halten" };
+    if (ready)
+      return { weight: Math.round((top + step) * 100) / 100, reps: exercise.reps, note: "+" + kg(step) + " kg · " + (surplus >= 2 ? "Wdh. klar über dem Ziel" : streak >= 2 ? streak + "× alle Wdh. geschafft" : "alle Wdh. geschafft") };
+    if (big) return { weight: top, reps: exercise.reps + Math.max(1, surplus + 1), note: "Erst " + (exercise.reps + 2) + " Wdh. schaffen, dann +" + kg(step) + " kg" };
+    return { weight: top, reps: exercise.reps, note: "Noch 1× alle Wdh., dann +" + kg(step) + " kg" };
+  }
+  const misses = atTop.findIndex((x) => hit(x.sets));
+  if ((misses < 0 ? atTop.length : misses) >= 3) {
+    const back = Math.max(step, Math.round((top * 0.9) / step) * step);
+    return { weight: back, reps: exercise.reps, note: "3× nicht geschafft: " + kg(back) + " kg, dann neu aufbauen" };
   }
   return { weight: top, reps: exercise.reps, note: "Gewicht halten, Wdh. steigern" };
 }
