@@ -5,6 +5,9 @@ import { newId, parseDate, shiftDay, type Holding, type MoneyEntry, type MoneyRu
 import {
   categories,
   categoryOf,
+  fixDuplicates,
+  moneyDuplicates,
+  salaryDay,
   depotHistory,
   euro,
   fetchQuotes,
@@ -90,7 +93,8 @@ function DayStepper({ value, onChange }: { value: number; onChange: (n: number) 
 // ---------- Setup ----------
 
 function Setup() {
-  const { update } = usePlanner();
+  const { state, update } = usePlanner();
+  const unsynced = !state.accessToken || !state.cloudLinked;
   const today = useToday();
   type SetupRow = { key: string; name: string; kind: MoneyRule["kind"]; every: MoneyRule["every"]; amount: string; day: number };
   const [rows, setRows] = useState<SetupRow[]>([
@@ -111,7 +115,8 @@ function Setup() {
       moneyRules: [
         ...prev.moneyRules,
         ...rows
-          .filter((r) => parseAmount(r.amount) > 0)
+          // Already there (e.g. from another device): not a second time.
+          .filter((r) => parseAmount(r.amount) > 0 && !prev.moneyRules.some((x) => x.kind === r.kind && x.name.trim().toLowerCase() === r.name.toLowerCase() && (!x.end || x.end >= today)))
           .map((r): MoneyRule => ({ id: newId("mr"), kind: r.kind, name: r.name, amount: parseAmount(r.amount), every: r.every, day: r.day, start })),
       ],
     }));
@@ -125,6 +130,11 @@ function Setup() {
       <Text style={[s.muted, { lineHeight: 20 }]}>
         Trag ein, was regelmäßig kommt und geht. Hap bucht es dann automatisch – du trägst nur noch Alltagsausgaben ein. Alles ist später änderbar.
       </Text>
+      {unsynced ? (
+        <Text style={[s.formError, { lineHeight: 18 }]}>
+          Hast du Geld schon auf einem anderen Gerät eingerichtet? Dann verbinde zuerst dieses Gerät (Einstellungen → App-Zugang, „Cloud-Daten übernehmen“) – sonst steht alles doppelt drin.
+        </Text>
+      ) : null}
       {rows.map((r) => (
         <View key={r.key} style={{ gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line }}>
           <Text style={s.h3}>{r.name}</Text>
@@ -528,7 +538,7 @@ const reasonText: Record<ScanRow["reason"], string> = {
   "": "",
   before: "vor diesem Gehaltsmonat",
   duplicate: "schon eingetragen",
-  fixed: "bucht Hap schon (Fixkosten, Abo, Sparplan)",
+  fixed: "bucht Hap schon automatisch",
   other: "",
 };
 const typeText = { refund: "Erstattung", income: "Einnahme", transfer: "Sparplan / Umbuchung – zählt nicht", expense: "" };
@@ -723,6 +733,7 @@ function MoneyContent() {
 
   return (
     <View style={{ gap: 18 }}>
+      <DuplicateCard />
       <View style={[s.card, { padding: 20, gap: 8 }]}>
         <Text style={{ color: C.green, fontSize: 12, fontWeight: "700", letterSpacing: 1.4 }}>NOCH FREI BIS {long(p.end).toUpperCase()}</Text>
         <View style={[s.row, { alignItems: "baseline", gap: 10, flexWrap: "wrap" }]}>
@@ -993,10 +1004,54 @@ function MoneyContent() {
 }
 
 export function MoneyScreen() {
-  const { state } = usePlanner();
+  const { state, update } = usePlanner();
+  const today = useToday();
+  const fallback = salaryDay(state, today);
+  // Rules exist but the payday got lost: take it from the salary, no new setup.
+  useEffect(() => {
+    if (state.payday || !fallback) return;
+    const timer = setTimeout(() => update((prev) => (prev.payday ? prev : { ...prev, payday: fallback })), 0);
+    return () => clearTimeout(timer);
+  }, [state.payday, fallback, update]);
   return (
     <Shell title="Geld" subtitle="Was kommt, was geht, was übrig bleibt.">
-      {state.payday ? <MoneyContent /> : <Setup />}
+      {state.payday ? <MoneyContent /> : fallback ? null : <Setup />}
     </Shell>
+  );
+}
+
+function DuplicateCard() {
+  const { state, update } = usePlanner();
+  const today = useToday();
+  const [hidden, setHidden] = useState(false);
+  const found = moneyDuplicates(state, today);
+  if (hidden || !found.count) return null;
+  return (
+    <View style={[s.card, { padding: 18, gap: 10, borderColor: "#5A3A2A", backgroundColor: "#241A17" }]}>
+      <Text style={[s.h3, { color: red }]}>Doppelt gezählt?</Text>
+      {found.rules.map((g) => (
+        <Text key={g[0].id} style={[s.body, { lineHeight: 20 }]}>
+          {g[0].name} ist {g.length}× eingetragen ({euro(g[0].amount)} {when(g[0])}).
+        </Text>
+      ))}
+      {found.entries.map(({ entry, rule, date }) => (
+        <Text key={entry.id} style={[s.body, { lineHeight: 20 }]}>
+          Einnahme {euro(entry.amount)} am {short(entry.date)} – das ist wohl {rule.name} vom {short(date)}, das Hap schon bucht.
+        </Text>
+      ))}
+      <Text style={s.micro}>Bereinigen behält je einen Eintrag. Ein doppeltes Gehalt wird zu „Nur diesmal“ mit dem echten Betrag.</Text>
+      <View style={s.row}>
+        <Button
+          icon={Check}
+          onPress={() => {
+            tap("success");
+            update((prev) => fixDuplicates(prev, today));
+          }}
+        >
+          Bereinigen
+        </Button>
+        <Button quiet onPress={() => setHidden(true)}>Passt so</Button>
+      </View>
+    </View>
   );
 }

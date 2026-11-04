@@ -5,6 +5,7 @@ import Animated, { FadeInDown, FadeOut, LinearTransition } from "react-native-re
 import { Archive, Bell, Check, ChevronDown, ChevronRight, Clock3, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react-native";
 import { dateKey, localStamp, newId, shiftDay, validDate, type RemindMode, type Todo } from "@/lib/planner";
 import { defaultRemind, dueLabel, remindLabel, remindModes, sortTodos, todoState, type TodoState } from "@/lib/todos";
+import { deadlineStatus, dropBlocks, estimateEffort, planDeadline } from "@/lib/deadlines";
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { Button, C, Chip, Field, Sheet, Shell, s } from "./planner-ui";
@@ -20,6 +21,7 @@ const stateStyle: Record<TodoState, { label: string; color: string }> = {
 const order: TodoState[] = ["overdue", "today", "soon", "later", "open"];
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const validTime = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+export const hours = (m: number) => (m < 60 ? m + " Min." : String(Math.round((m / 60) * 10) / 10).replace(".", ",") + " Std.");
 
 export function useTodoActions() {
   const { update } = usePlanner();
@@ -29,6 +31,8 @@ export function useTodoActions() {
       update((prev) => ({
         ...prev,
         todos: prev.todos.map((t) => (t.id === todo.id ? { ...t, doneAt: t.doneAt ? null : localStamp() } : t)),
+        // Finished early: the remaining work blocks are not needed any more.
+        tasks: todo.doneAt ? prev.tasks : dropBlocks(prev, todo.id),
       }));
     },
   };
@@ -88,7 +92,7 @@ export function TodoRow({ todo, onEdit }: { todo: Todo; onEdit?: () => void }) {
 }
 
 function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string; close: () => void; saved?: () => void }) {
-  const { update } = usePlanner();
+  const { state, update } = usePlanner();
   const today = dateKey();
   const [title, setTitle] = useState(todo?.title || draft || "");
   const [dueDay, setDueDay] = useState(todo?.due.slice(0, 10) || "");
@@ -98,6 +102,8 @@ function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string
   const [onceTime, setOnceTime] = useState(todo?.remind.at.slice(11, 16) || "09:00");
   const [error, setError] = useState("");
   const [confirm, setConfirm] = useState(false);
+  const [effort, setEffort] = useState<number | undefined>(todo?.effort);
+  const status = todo?.due ? deadlineStatus(state, todo, today) : null;
   const setMode = (mode: RemindMode) => setRemind({ ...remind, mode });
   function save() {
     if (!title.trim()) return setError("Was möchtest du erledigen?");
@@ -112,9 +118,16 @@ function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string
       remind: { ...remind, at: remind.mode === "once" ? onceDay + "T" + onceTime : "" },
       createdAt: todo?.createdAt || localStamp(),
       doneAt: todo?.doneAt || null,
+      ...(effort !== undefined && dueDay ? { effort } : {}),
     };
     tap("success");
-    update((prev) => ({ ...prev, todos: todo ? prev.todos.map((t) => (t.id === todo.id ? next : t)) : [...prev.todos, next] }));
+    update((prev) => {
+      const after = { ...prev, todos: todo ? prev.todos.map((t) => (t.id === todo.id ? next : t)) : [...prev.todos, next] };
+      // New effort or due date: plan the work blocks again.
+      if (!next.due || next.effort === 0) return { ...after, tasks: dropBlocks(after, next.id) };
+      if (next.effort && !next.doneAt && (next.effort !== todo?.effort || next.due !== todo?.due)) return planDeadline(after, next, next.effort).state;
+      return after;
+    });
     saved?.();
     close();
   }
@@ -146,6 +159,31 @@ function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string
           </View>
         ) : null}
       </View>
+      {dueDay ? (
+        <View style={{ gap: 10 }}>
+          <Text style={s.label}>Arbeitszeit einplanen</Text>
+          <View style={s.wrap}>
+            {[
+              [0, "Keine"],
+              [30, "30 Min."],
+              [60, "1 Std."],
+              [120, "2 Std."],
+              [180, "3 Std."],
+              [300, "5 Std."],
+              [600, "10 Std."],
+            ].map(([m, label]) => (
+              <Chip key={m} label={String(label)} active={effort === m} onPress={() => setEffort(Number(m))} />
+            ))}
+          </View>
+          <Text style={s.micro}>
+            {status && status.effort
+              ? hours(status.planned) + " eingeplant" + (status.done ? " · " + hours(status.done) + " erledigt" : "") + (status.missing >= 30 ? " · " + hours(status.missing) + " passen noch nicht rein" : "")
+              : effort === undefined
+                ? "Vorschlag: ≈ " + hours(estimateEffort(title)) + ". Hap verteilt die Zeit in freie Lücken vor der Endzeit."
+                : "Hap verteilt die Zeit in freie Lücken vor der Endzeit, möglichst einen Tag früher fertig."}
+          </Text>
+        </View>
+      ) : null}
       <View style={{ gap: 10 }}>
         <Text style={s.label}>Erinnern</Text>
         <View style={s.wrap}>
@@ -204,7 +242,7 @@ function TodoEditor({ todo, draft, close, saved }: { todo?: Todo; draft?: string
           <Button
             danger
             onPress={() => {
-              update((prev) => ({ ...prev, todos: prev.todos.filter((t) => t.id !== todo.id) }));
+              update((prev) => ({ ...prev, todos: prev.todos.filter((t) => t.id !== todo.id), tasks: dropBlocks(prev, todo.id) }));
               close();
             }}
           >

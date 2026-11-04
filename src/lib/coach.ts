@@ -3,6 +3,7 @@ import { foodDays, foodInsights, foodSummary, trainingInsights, trainingWeeks } 
 import { euro, periodSummary, savingsCheck } from "./money.ts";
 import { upcomingExams } from "./study.ts";
 import { planningWeek, preview } from "./weekplan.ts";
+import { deadlineStatus } from "./deadlines.ts";
 
 // Weekly focus: Hap computes the facts, the AI only picks and phrases the
 // three things that matter most. Only numbers and plan names leave the
@@ -68,6 +69,13 @@ export function weekFacts(state: PlannerState, today: string) {
   const open = state.todos.filter((t) => !t.doneAt);
   const overdue = open.filter((t) => t.due && t.due.slice(0, 10) < today).length;
   if (open.length) add("To-dos", open.length + " offen, davon " + overdue + " überfällig.");
+  // Deadlines with work time: hours and days, no titles.
+  const deadlines = open.filter((t) => t.due && t.due.slice(0, 10) >= today && t.due.slice(0, 10) <= shiftDay(today, 14) && t.effort !== 0);
+  for (const t of deadlines.sort((a, b) => a.due.localeCompare(b.due)).slice(0, 4)) {
+    const st = deadlineStatus(state, t, today);
+    const days = Math.round((new Date(t.due.slice(0, 10)).getTime() - new Date(today).getTime()) / 864e5);
+    add("Abgaben", "eine in " + days + " Tagen: " + (st.effort ? Math.round(st.left / 6) / 10 + " h offen, " + Math.round(st.planned / 6) / 10 + " h eingeplant" : "noch keine Arbeitszeit geplant") + ".");
+  }
 
   // What was planned last time and whether it got done.
   const prev = state.weekFocus.filter((f) => f.id < week).sort((a, b) => b.id.localeCompare(a.id))[0];

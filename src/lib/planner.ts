@@ -33,6 +33,7 @@ export type Task = {
   placeId?: string;
   lead?: number; // own reminder minutes (e.g. from an invitation), else the global setting
   source?: string; // "ics:<uid>" for imported invitations
+  todoId?: string; // work block for a deadline to-do (see deadlines.ts)
 };
 export type Meal = {
   date: string;
@@ -125,6 +126,7 @@ export type Todo = {
   };
   createdAt: string;
   doneAt: string | null;
+  effort?: number; // minutes of work for a deadline; 0 = needs no planned time
 };
 export type FoodEntry = {
   id: string;

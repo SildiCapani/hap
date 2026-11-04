@@ -263,6 +263,15 @@ const same = (a: number, b: number) => Math.abs(a - b) < 0.005;
 // Sorts what the screenshots showed against the current pay period: payments
 // before the last payday, ones already entered and ones Hap books itself
 // (rent, abos, savings plans) start unticked.
+// Incoming money that is most likely a booking Hap makes itself: an income
+// rule within 5 days and at most 20 % off (salary minus the Mensa).
+export function bookedIncome(state: PlannerState, date: string, amount: number) {
+  for (const rule of state.moneyRules.filter((r) => r.kind === "income"))
+    for (const d of occurrences(rule, shiftDay(date, -5), shiftDay(date, 5)))
+      if (Math.abs(amount - amountOn(state, rule, d)) <= amountOn(state, rule, d) * 0.2) return { rule, date: d };
+  return null;
+}
+
 export function reviewScan(state: PlannerState, items: ScanItem[], today: string): ScanRow[] {
   const { start } = period(state.payday, today);
   const booked = state.moneyRules
@@ -274,7 +283,8 @@ export function reviewScan(state: PlannerState, items: ScanItem[], today: string
     if (seen.has(id)) return [];
     seen.add(id);
     const reason: ScanReason =
-      item.type !== "expense" ? "other"
+      item.type === "income" && bookedIncome(state, item.date, item.amount) ? "fixed"
+      : item.type !== "expense" ? "other"
       : item.date < start ? "before"
       : state.moneyEntries.some((e) => e.kind === "expense" && same(e.amount, item.amount) && daysApart(e.date, item.date) <= 1) ? "duplicate"
       : booked.some((b) => same(b.amount, item.amount) && daysApart(b.date, item.date) <= 5) ? "fixed"
@@ -305,3 +315,55 @@ export async function scanExpenses(state: Pick<PlannerState, "apiUrl" | "accessT
   if (!response.ok) return "Die Screenshots konnten gerade nicht ausgelesen werden. Versuch es nochmal.";
   return ((await response.json()) as { items: ScanItem[] }).items || [];
 }
+
+// ---------- Doppelt gezählt ----------
+
+const ruleKey = (r: MoneyRule) => [r.kind, r.every, r.day, r.name.trim().toLowerCase()].join("|");
+
+// Rules set up twice (e.g. the setup filled in on a second device before it
+// synced) and income entries for money Hap already books by itself.
+export function moneyDuplicates(state: PlannerState, today: string) {
+  const groups = new Map<string, MoneyRule[]>();
+  for (const r of state.moneyRules.filter((x) => !x.end || x.end >= today)) groups.set(ruleKey(r), [...(groups.get(ruleKey(r)) || []), r]);
+  const rules = [...groups.values()].filter((g) => g.length > 1);
+  const entries = state.moneyEntries
+    .filter((e) => e.kind === "income")
+    .flatMap((e) => {
+      const match = bookedIncome(state, e.date, e.amount);
+      return match ? [{ entry: e, ...match }] : [];
+    });
+  return { rules, entries, count: rules.length + entries.length };
+}
+
+// Keeps the oldest copy of each rule (with its one-off changes) and turns a
+// duplicate salary entry into a "this time" amount of the real booking.
+export function fixDuplicates(state: PlannerState, today: string): PlannerState {
+  const { rules, entries } = moneyDuplicates(state, today);
+  const keepOf = new Map<string, string>();
+  for (const g of rules) {
+    const [keep, ...rest] = [...g].sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
+    for (const r of rest) keepOf.set(r.id, keep.id);
+  }
+  const overrides: Record<string, number> = {};
+  for (const [key, value] of Object.entries(state.moneyOverrides)) {
+    const cut = key.lastIndexOf(":");
+    const to = keepOf.get(key.slice(0, cut));
+    if (!to) overrides[key] = value;
+    else overrides[to + ":" + key.slice(cut + 1)] ??= value;
+  }
+  for (const { entry, rule, date } of entries) {
+    const key = (keepOf.get(rule.id) || rule.id) + ":" + date;
+    overrides[key] ??= entry.amount;
+  }
+  const gone = new Set(entries.map((e) => e.entry.id));
+  return {
+    ...state,
+    moneyRules: state.moneyRules.filter((r) => !keepOf.has(r.id)),
+    moneyOverrides: overrides,
+    moneyEntries: state.moneyEntries.filter((e) => !gone.has(e.id)),
+  };
+}
+
+// The payday follows from the salary if a sync ever lost it.
+export const salaryDay = (state: PlannerState, today: string) =>
+  state.moneyRules.find((r) => r.kind === "income" && r.every === "month" && (!r.end || r.end >= today))?.day || 0;

@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createState, readState } from "../src/lib/planner.ts";
-import { holdingNow, occurrences, parseAmount, period, periodSummary, projection, reviewScan, savingsCheck, scanEntry, sharesOn } from "../src/lib/money.ts";
+import { fixDuplicates, holdingNow, moneyDuplicates, occurrences, parseAmount, period, periodSummary, projection, reviewScan, salaryDay, savingsCheck, scanEntry, sharesOn } from "../src/lib/money.ts";
 import quotesHandler, { parseChart } from "../netlify/functions/quotes.mjs";
 import { cleanExpenses } from "../netlify/functions/expense-scan.mjs";
-import { LOCAL_KEYS } from "../src/lib/sync.ts";
+import { LOCAL_KEYS, merge3 } from "../src/lib/sync.ts";
 
 const rule = (id, kind, name, amount, day, every = "month", extra = {}) => ({ id, kind, name, amount, every, day, start: "2026-10-25", ...extra });
 const mine = () => ({
@@ -139,4 +139,29 @@ test("screenshot payments are checked against the pay period, entries and Hap's 
     cleanExpenses({ items: [{ date: "2026-12-01", merchant: " DB ", amount: -9.9, type: "expense", category: "bahn" }, { date: "", merchant: "x", amount: 0, type: "expense", category: "essen" }] }, "2026-11-03"),
     [{ date: "2026-11-03", merchant: "DB", amount: 9.9, type: "expense", category: "sonstiges" }],
   );
+});
+
+test("money set up twice is found and merged; a scanned salary is not counted again", () => {
+  const state = mine();
+  const copy = (r, id) => ({ ...r, id, start: "2026-10-27" });
+  state.moneyRules.push(copy(state.moneyRules[0], "salary2"), copy(state.moneyRules[2], "rent2"));
+  state.moneyOverrides = { "salary2:2026-10-25": 1183.4 };
+  state.moneyEntries.push({ id: "e2", date: "2026-10-26", amount: 1190, kind: "income", category: "einnahme", note: "Gehalt" });
+  const found = moneyDuplicates(state, "2026-10-28");
+  assert.deepEqual(found.rules.map((g) => g.map((r) => r.id)), [["salary", "salary2"], ["rent", "rent2"]]);
+  assert.deepEqual(found.entries.map((e) => [e.entry.id, e.rule.id, e.date]), [["e2", "salary", "2026-10-25"]]);
+  const fixed = fixDuplicates(state, "2026-10-28");
+  assert.deepEqual(fixed.moneyRules.map((r) => r.id).filter((id) => ["salary2", "rent2"].includes(id)), []);
+  assert.deepEqual(fixed.moneyOverrides, { "salary:2026-10-25": 1183.4 }, "the one-off amount moves to the kept rule");
+  assert.ok(!fixed.moneyEntries.some((e) => e.id === "e2"));
+  assert.equal(periodSummary(fixed, "2026-10-28").income, 1183.4 + 5 * 47);
+  assert.equal(moneyDuplicates(fixed, "2026-10-28").count, 0);
+  const rows = reviewScan(mine(), [{ date: "2026-10-25", merchant: "Arbeitgeber GmbH", amount: 1176.2, type: "income", category: "sonstiges" }], "2026-10-28");
+  assert.deepEqual([rows[0].reason, rows[0].pick], ["fixed", false]);
+  assert.equal(salaryDay(mine(), "2026-10-28"), 25);
+});
+
+test("a first sync never lets an empty value replace real data", () => {
+  assert.deepEqual(merge3(null, { payday: 0, moneyRules: [] }, { payday: 25, moneyRules: [{ id: "a" }] }), { payday: 25, moneyRules: [{ id: "a" }] });
+  assert.deepEqual(merge3({ payday: 25 }, { payday: 0 }, { payday: 25 }), { payday: 0 }, "a real change on this device still wins");
 });

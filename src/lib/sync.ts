@@ -65,8 +65,14 @@ function mergeRecord(base: Record<string, unknown> = {}, local: Record<string, u
   return out;
 }
 
+// Never synced before: an empty value here (0, "", nothing set up yet) must
+// not overwrite real data from the other device.
+const empty = (v: unknown) =>
+  v === undefined || v === null || v === 0 || v === "" || (Array.isArray(v) && !v.length) || (!!v && typeof v === "object" && !Object.keys(v).length);
+
 function mergeValue(base: unknown, local: unknown, remote: unknown): unknown {
   if (same(local, remote)) return local;
+  if (base === undefined && empty(local) && !empty(remote)) return remote;
   if (same(local, base)) return remote;
   if (same(remote, base)) return local;
   if (Array.isArray(local) && Array.isArray(remote)) return mergeList(Array.isArray(base) ? base : [], local, remote);

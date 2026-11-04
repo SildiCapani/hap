@@ -83,6 +83,7 @@ import {
 import { usePlanner } from "@/lib/store";
 import { tap } from "@/lib/notify";
 import { DateField, DurationField, TimeField } from "./pickers";
+import { DeviceBanner } from "./device-banner";
 import { meetingLink } from "@/lib/icsImport";
 
 export const C = {
@@ -529,6 +530,7 @@ export function Shell({
           </View>
           )}
           <ActiveBanner path={path} />
+          <DeviceBanner />
           {error ? (
             <View style={s.errorBar}>
               <Text style={{ color: "#F3A4A9", flex: 1 }}>{error}</Text>
